@@ -62,12 +62,13 @@ const generalLimiter = rateLimit({
 });
 app.use('/api', generalLimiter);
 
-// Health Check
-app.get('/api/health', (_req, res) => {
+// Health & Root Status Check
+app.get(['/', '/health', '/api/health'], (_req, res) => {
   res.json({
     status: 'healthy',
     service: 'Parul LeadDesk API',
     version: '1.0.0',
+    endpoint: '/api',
     timestamp: new Date().toISOString(),
   });
 });
