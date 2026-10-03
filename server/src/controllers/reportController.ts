@@ -6,21 +6,15 @@ export const getKPIs = async (req: AuthenticatedRequest, res: Response): Promise
   try {
     const userRole = req.profile!.role;
     const userId = req.profile!.id;
-    const userTeam = req.profile!.team;
 
     let targetEmployeeId: string | undefined = req.query.employee_id as string | undefined;
-    let targetTeam: string | undefined = req.query.team as string | undefined;
 
     if (userRole === 'employee') {
       targetEmployeeId = userId;
-      targetTeam = undefined;
-    } else if (userRole === 'team_lead') {
-      targetTeam = userTeam || undefined;
     }
 
     const filters = {
       employee_id: targetEmployeeId,
-      team: targetTeam,
       startDate: req.query.startDate as string,
       endDate: req.query.endDate as string,
     };
@@ -41,19 +35,11 @@ export const getKPIs = async (req: AuthenticatedRequest, res: Response): Promise
 };
 
 export const getEmployeeLeaderboard = async (
-  req: AuthenticatedRequest,
+  _req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   try {
-    const userRole = req.profile!.role;
-    const userTeam = req.profile!.team;
-
-    let targetTeam: string | undefined = req.query.team as string | undefined;
-    if (userRole === 'team_lead') {
-      targetTeam = userTeam || undefined;
-    }
-
-    const leaderboard = await dbStore.getEmployeeLeaderboard({ team: targetTeam });
+    const leaderboard = await dbStore.getEmployeeLeaderboard();
     res.json({
       success: true,
       data: leaderboard,
@@ -94,21 +80,15 @@ export const getTrend = async (req: AuthenticatedRequest, res: Response): Promis
   try {
     const userRole = req.profile!.role;
     const userId = req.profile!.id;
-    const userTeam = req.profile!.team;
 
     let targetEmployeeId: string | undefined = req.query.employee_id as string | undefined;
-    let targetTeam: string | undefined = req.query.team as string | undefined;
 
     if (userRole === 'employee') {
       targetEmployeeId = userId;
-      targetTeam = undefined;
-    } else if (userRole === 'team_lead') {
-      targetTeam = userTeam || undefined;
     }
 
     const days = req.query.days ? parseInt(req.query.days as string, 10) : 30;
     const trend = await dbStore.getTrend(days, {
-      team: targetTeam,
       employee_id: targetEmployeeId,
     });
 
@@ -129,20 +109,14 @@ export const getTypeSplit = async (req: AuthenticatedRequest, res: Response): Pr
   try {
     const userRole = req.profile!.role;
     const userId = req.profile!.id;
-    const userTeam = req.profile!.team;
 
     let targetEmployeeId: string | undefined = req.query.employee_id as string | undefined;
-    let targetTeam: string | undefined = req.query.team as string | undefined;
 
     if (userRole === 'employee') {
       targetEmployeeId = userId;
-      targetTeam = undefined;
-    } else if (userRole === 'team_lead') {
-      targetTeam = userTeam || undefined;
     }
 
     const split = await dbStore.getTypeSplit({
-      team: targetTeam,
       employee_id: targetEmployeeId,
     });
 

@@ -104,7 +104,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const role = user?.role;
   const isEmployee = role === 'employee';
-  const isTeamLead = role === 'team_lead';
+  const isTeamLead = false;
   const isManager = role === 'manager';
   const isAdmin = role === 'admin';
 

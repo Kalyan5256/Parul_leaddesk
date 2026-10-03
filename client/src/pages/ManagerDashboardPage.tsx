@@ -53,7 +53,6 @@ const CHANNEL_COLORS_MAP: Record<string, string> = {
 
 export const ManagerDashboardPage: React.FC = () => {
   // Global Dashboard Filters (Section 34)
-  const [teamFilter, setTeamFilter] = useState('');
   const [employeeFilter, setEmployeeFilter] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -75,10 +74,9 @@ export const ManagerDashboardPage: React.FC = () => {
 
   // Fetch Real KPIs from Database (Section 30, 57)
   const { data: kpisData } = useQuery({
-    queryKey: ['dashboard-kpis', teamFilter, employeeFilter, startDate, endDate],
+    queryKey: ['dashboard-kpis', employeeFilter, startDate, endDate],
     queryFn: async () => {
       const res = await api.get('/reports/kpis', {
-        team: teamFilter || undefined,
         employee_id: employeeFilter || undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
@@ -89,11 +87,10 @@ export const ManagerDashboardPage: React.FC = () => {
 
   // Fetch 30-Day Trend from Database (Section 31)
   const { data: trendData = [] } = useQuery({
-    queryKey: ['dashboard-trend', teamFilter, employeeFilter],
+    queryKey: ['dashboard-trend', employeeFilter],
     queryFn: async () => {
       const res = await api.get('/reports/trend', {
         days: 30,
-        team: teamFilter || undefined,
         employee_id: employeeFilter || undefined,
       });
       return res.data || [];
@@ -102,10 +99,9 @@ export const ManagerDashboardPage: React.FC = () => {
 
   // Fetch Donut & Split Distributions from Database (Section 31)
   const { data: splitData } = useQuery({
-    queryKey: ['dashboard-split', teamFilter, employeeFilter],
+    queryKey: ['dashboard-split', employeeFilter],
     queryFn: async () => {
       const res = await api.get('/reports/type-split', {
-        team: teamFilter || undefined,
         employee_id: employeeFilter || undefined,
       });
       return res.data;
@@ -114,11 +110,9 @@ export const ManagerDashboardPage: React.FC = () => {
 
   // Fetch Leaderboard from Database (Section 32)
   const { data: leaderboardData = [] } = useQuery({
-    queryKey: ['dashboard-leaderboard', teamFilter],
+    queryKey: ['dashboard-leaderboard'],
     queryFn: async () => {
-      const res = await api.get('/reports/employee-stats', {
-        team: teamFilter || undefined,
-      });
+      const res = await api.get('/reports/employee-stats');
       return res.data || [];
     },
   });
@@ -146,7 +140,6 @@ export const ManagerDashboardPage: React.FC = () => {
     .slice(0, 10);
 
   const resetFilters = () => {
-    setTeamFilter('');
     setEmployeeFilter('');
     setStartDate('');
     setEndDate('');
@@ -185,26 +178,13 @@ export const ManagerDashboardPage: React.FC = () => {
       {/* Global Dashboard Filters Bar (Section 34) */}
       <GlassCard variant="default" padding="sm">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center">
-          <div className="lg:col-span-1 flex items-center text-slate-300 text-xs font-bold gap-1.5 uppercase">
+          <div className="lg:col-span-2 flex items-center text-slate-300 text-xs font-bold gap-1.5 uppercase">
             <Filter className="w-4 h-4 text-pu-gold" />
             <span>Filters:</span>
           </div>
 
-          {/* Filter by Team */}
-          <div className="lg:col-span-3">
-            <select
-              value={teamFilter}
-              onChange={(e) => setTeamFilter(e.target.value)}
-              className="w-full rounded-xl px-3 py-2 text-xs sm:text-sm glass-input text-white cursor-pointer"
-            >
-              <option value="" className="bg-slate-900">All Teams</option>
-              <option value="Team A" className="bg-slate-900">Team A</option>
-              <option value="Team B" className="bg-slate-900">Team B</option>
-            </select>
-          </div>
-
           {/* Filter by Specific Employee */}
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-4">
             <select
               value={employeeFilter}
               onChange={(e) => setEmployeeFilter(e.target.value)}
@@ -213,14 +193,14 @@ export const ManagerDashboardPage: React.FC = () => {
               <option value="" className="bg-slate-900">All Counsellors</option>
               {employees.map((emp: any) => (
                 <option key={emp.id} value={emp.id} className="bg-slate-900">
-                  {emp.full_name} ({emp.team || 'No team'})
+                  {emp.full_name}
                 </option>
               ))}
             </select>
           </div>
 
           {/* Date Range */}
-          <div className="lg:col-span-4 flex items-center gap-2">
+          <div className="lg:col-span-5 flex items-center gap-2">
             <input
               type="date"
               value={startDate}
@@ -415,8 +395,8 @@ export const ManagerDashboardPage: React.FC = () => {
         </GlassCard>
       </div>
 
-      {/* Charts Row 2: Status Distribution (Donut), Channel Split (Donut), Team Breakdown (Stacked Bar) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      {/* Charts Row 2: Status Distribution (Donut) & Channel Split (Donut) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* Status Distribution Donut (Section 31) */}
         <GlassCard variant="default" padding="md">
           <h3 className="text-sm font-bold text-white tracking-tight mb-2">
@@ -514,36 +494,6 @@ export const ManagerDashboardPage: React.FC = () => {
             ))}
           </div>
         </GlassCard>
-
-        {/* Online vs Offline by Team (Stacked Bar) (Section 31) */}
-        <GlassCard variant="default" padding="md">
-          <h3 className="text-sm font-bold text-white tracking-tight mb-2">
-            Channel Distribution by Team
-          </h3>
-          <div className="h-52 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={splitData?.teamSplit || []}
-                margin={{ top: 15, right: 10, left: -20, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="team" stroke="#94A3B8" fontSize={11} />
-                <YAxis stroke="#94A3B8" fontSize={11} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#071A38',
-                    borderColor: 'rgba(255,255,255,0.2)',
-                    borderRadius: '12px',
-                    color: '#FFF',
-                  }}
-                />
-                <Legend iconSize={8} wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
-                <Bar dataKey="online" name="Online" stackId="a" fill="#06B6D4" radius={[0, 0, 4, 4]} />
-                <Bar dataKey="offline" name="Offline" stackId="a" fill="#F5A800" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </GlassCard>
       </div>
 
       {/* Row 3: Leaderboard (Section 32) & Not Submitted Panel (Section 33) */}
@@ -569,7 +519,6 @@ export const ManagerDashboardPage: React.FC = () => {
               <thead className="text-[11px] uppercase bg-white/5 text-slate-400 border-b border-white/10 select-none">
                 <tr>
                   <th scope="col" className="px-4 py-3 font-bold">Counsellor</th>
-                  <th scope="col" className="px-4 py-3 font-bold">Team</th>
                   <th
                     scope="col"
                     onClick={() => {
@@ -638,9 +587,6 @@ export const ManagerDashboardPage: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="text-xs text-slate-300">{emp.team}</span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
                       <span className={`font-bold ${emp.today > 0 ? 'text-pu-gold' : 'text-slate-500'}`}>
                         {emp.today}
                       </span>
@@ -702,7 +648,7 @@ export const ManagerDashboardPage: React.FC = () => {
                           {emp.full_name}
                         </span>
                         <span className="text-[10px] text-slate-400">
-                          {emp.team || 'Unassigned'} • @{emp.username}
+                          @{emp.username}
                         </span>
                       </div>
                     </div>

@@ -11,29 +11,21 @@ import {
 } from 'lucide-react';
 
 export const BottomNav: React.FC = () => {
-  const { isEmployee, isTeamLead } = useAuth();
+  const { isEmployee } = useAuth();
 
-  // Primary 5 navigation items based on role
+  // Primary navigation items based on role
   const navItems = isEmployee
     ? [
         { to: '/report', label: 'Report', icon: FilePlus2 },
         { to: '/my-leads', label: 'My Leads', icon: FolderKanban },
         { to: '/follow-ups', label: 'Follow-ups', icon: Clock },
       ]
-    : isTeamLead
-    ? [
-        { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { to: '/report', label: 'Report', icon: FilePlus2 },
-        { to: '/leads', label: 'Leads', icon: Database },
-        { to: '/my-leads', label: 'Mine', icon: FolderKanban },
-        { to: '/followups', label: 'Command', icon: Clock },
-      ]
     : [
         { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { to: '/report', label: 'Report', icon: FilePlus2 },
         { to: '/leads', label: 'Leads', icon: Database },
         { to: '/followups', label: 'Command', icon: Clock },
-        { to: '/team', label: 'Team', icon: Users },
+        { to: '/team', label: 'Staff', icon: Users },
       ];
 
   return (

@@ -186,7 +186,7 @@ export const ForgotPasswordPage: React.FC = () => {
                 <div>
                   <span className="font-semibold text-white">Quick Test Accounts:</span>
                   <div className="flex flex-wrap gap-2 mt-1.5">
-                    {['manager', 'employee1', 'teamlead1'].map((id) => (
+                    {['manager', 'employee1'].map((id) => (
                       <button
                         key={id}
                         type="button"

@@ -19,15 +19,15 @@ router.get('/trend', getTrend);
 router.get('/type-split', getTypeSplit);
 router.get('/daily-summary', getDailySummary);
 
-// Manager / Team Lead / Admin analytics
+// Manager / Admin analytics
 router.get(
   '/employee-stats',
-  requireRole('manager', 'team_lead', 'admin'),
+  requireRole('manager', 'admin'),
   getEmployeeLeaderboard
 );
 router.get(
   '/not-submitted',
-  requireRole('manager', 'team_lead', 'admin'),
+  requireRole('manager', 'admin'),
   getNotSubmitted
 );
 

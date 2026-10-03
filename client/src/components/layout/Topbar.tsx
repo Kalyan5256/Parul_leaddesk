@@ -25,13 +25,8 @@ export const Topbar: React.FC<TopbarProps> = ({ title, subtitle }) => {
         </div>
         <div className="hidden md:block">
           {title && (
-            <h1 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-              <span>{title}</span>
-              {user?.team && (
-                <span className="text-xs font-normal text-slate-400 px-2 py-0.5 rounded-full bg-white/5 border border-white/10">
-                  {user.team}
-                </span>
-              )}
+            <h1 className="text-lg font-bold text-white tracking-tight">
+              {title}
             </h1>
           )}
           {subtitle && (

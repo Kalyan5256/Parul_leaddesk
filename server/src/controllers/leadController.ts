@@ -7,24 +7,17 @@ export const getLeads = async (req: AuthenticatedRequest, res: Response): Promis
   try {
     const userRole = req.profile!.role;
     const userId = req.profile!.id;
-    const userTeam = req.profile!.team;
 
     let targetEmployeeId: string | undefined = req.query.employee_id as string | undefined;
-    let targetTeam: string | undefined = req.query.team as string | undefined;
 
     // Strict Security Isolation (Section 1, 8, 14, 56)
     // Employees can NEVER see another employee's leads regardless of query parameters
     if (userRole === 'employee') {
       targetEmployeeId = userId;
-      targetTeam = undefined;
-    } else if (userRole === 'team_lead') {
-      // Team lead is strictly bounded to their team
-      targetTeam = userTeam || undefined;
     }
 
     const filters = {
       employee_id: targetEmployeeId,
-      team: targetTeam,
       status: req.query.status as string,
       lead_type: req.query.lead_type as string,
       course: req.query.course as string,
@@ -81,15 +74,6 @@ export const getLeadById = async (req: AuthenticatedRequest, res: Response): Pro
       res.status(403).json({
         success: false,
         message: 'Forbidden: You do not have permission to view another employee lead',
-        code: 'ACCESS_DENIED',
-      });
-      return;
-    }
-
-    if (userRole === 'team_lead' && lead.employee_team !== userTeam) {
-      res.status(403).json({
-        success: false,
-        message: 'Forbidden: You can only access leads within your assigned team',
         code: 'ACCESS_DENIED',
       });
       return;
@@ -258,22 +242,16 @@ export const exportLeads = async (req: AuthenticatedRequest, res: Response): Pro
   try {
     const userRole = req.profile!.role;
     const userId = req.profile!.id;
-    const userTeam = req.profile!.team;
 
     let targetEmployeeId: string | undefined = req.query.employee_id as string | undefined;
-    let targetTeam: string | undefined = req.query.team as string | undefined;
 
     // Critical Security: Employee can NEVER export another employee's leads
     if (userRole === 'employee') {
       targetEmployeeId = userId;
-      targetTeam = undefined;
-    } else if (userRole === 'team_lead') {
-      targetTeam = userTeam || undefined;
     }
 
     const { leads } = await dbStore.getLeads({
       employee_id: targetEmployeeId,
-      team: targetTeam,
       status: req.query.status as string,
       lead_type: req.query.lead_type as string,
       course: req.query.course as string,
@@ -293,7 +271,6 @@ export const exportLeads = async (req: AuthenticatedRequest, res: Response): Pro
       'Status',
       'Follow-up Date',
       'Counsellor',
-      'Team',
       'Remarks',
       'Created At',
     ];
@@ -313,7 +290,6 @@ export const exportLeads = async (req: AuthenticatedRequest, res: Response): Pro
       escapeCsv(l.status),
       escapeCsv(l.follow_up_date || 'N/A'),
       escapeCsv(l.employee_name || 'N/A'),
-      escapeCsv(l.employee_team || 'N/A'),
       escapeCsv(l.remarks || ''),
       escapeCsv(l.created_at),
     ]);

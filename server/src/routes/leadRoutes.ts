@@ -29,7 +29,7 @@ router.post('/check-duplicate', validate(checkDuplicateSchema), checkDuplicates)
 router.get('/export', exportLeads);
 router.post(
   '/assign',
-  requireRole('manager', 'team_lead', 'admin'),
+  requireRole('manager', 'admin'),
   validate(assignLeadsSchema),
   assignLeads
 );

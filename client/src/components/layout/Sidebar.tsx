@@ -53,43 +53,35 @@ export const Sidebar: React.FC<SidebarProps> = ({ className = '', onNavigate }) 
       badge: 'Core',
     },
 
-    // Employee & Team Lead: My Leads
-    ...(isEmployee || isTeamLead
-      ? [
-          {
-            to: '/my-leads',
-            label: 'My Leads',
-            icon: FolderKanban,
-            badge: undefined,
-          },
-        ]
-      : []),
+    // My Leads
+    {
+      to: '/my-leads',
+      label: 'My Leads',
+      icon: FolderKanban,
+      badge: undefined,
+    },
 
-    // Employee & Team Lead: Follow-ups
-    ...(isEmployee || isTeamLead
-      ? [
-          {
-            to: '/follow-ups',
-            label: 'Follow-ups',
-            icon: Clock,
-            badge: undefined,
-          },
-        ]
-      : []),
+    // Follow-ups
+    {
+      to: '/follow-ups',
+      label: 'Follow-ups',
+      icon: Clock,
+      badge: undefined,
+    },
 
-    // Manager & Team Lead: All Leads
+    // Manager & Admin: All Leads
     ...(!isEmployee
       ? [
           {
             to: '/leads',
-            label: isTeamLead ? 'Team Leads' : 'All Leads',
+            label: 'All Leads',
             icon: Database,
             badge: undefined,
           },
         ]
       : []),
 
-    // Manager & Team Lead: Follow-up Command Centre
+    // Manager & Admin: Follow-up Command Centre
     ...(!isEmployee
       ? [
           {
@@ -101,12 +93,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ className = '', onNavigate }) 
         ]
       : []),
 
-    // Manager & Admin: Team Management
+    // Manager & Admin: Staff Management
     ...(isManager || isAdmin
       ? [
           {
             to: '/team',
-            label: 'Team Members',
+            label: 'Staff Management',
             icon: Users,
             badge: undefined,
           },
@@ -190,11 +182,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ className = '', onNavigate }) 
                   <Badge variant="role" value={user.role} size="sm">
                     {user.role}
                   </Badge>
-                  {user.team && (
-                    <span className="text-[10px] text-slate-400 truncate">
-                      • {user.team}
-                    </span>
-                  )}
                 </div>
               </div>
             </div>

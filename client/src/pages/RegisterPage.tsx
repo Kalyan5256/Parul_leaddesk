@@ -30,7 +30,6 @@ export const RegisterPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
-  const [team, setTeam] = useState('Team A');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -55,7 +54,6 @@ export const RegisterPage: React.FC = () => {
         email: email.trim().toLowerCase(),
         password,
         phone: phone.trim() || undefined,
-        team,
       });
 
       if (!res.success) {
@@ -111,7 +109,7 @@ export const RegisterPage: React.FC = () => {
             </div>
             <p className="text-slate-300 leading-relaxed text-[11px]">
               Self-registration is available exclusively for <strong>Admission Counsellors (Employees)</strong>.
-              Manager and Team Lead accounts are issued and provisioned securely by the central administration.
+              Manager accounts are issued and provisioned securely by the central administration.
             </p>
           </div>
 
@@ -194,18 +192,7 @@ export const RegisterPage: React.FC = () => {
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   }
-                  required
-                />
-
-                <Select
-                  label="Assigned Team"
-                  value={team}
-                  onChange={(e) => setTeam(e.target.value)}
-                  options={[
-                    { value: 'Team A', label: 'Team A' },
-                    { value: 'Team B', label: 'Team B' },
-                  ]}
-                />
+                  />
               </div>
 
               <div className="pt-2">

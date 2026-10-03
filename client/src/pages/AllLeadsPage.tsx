@@ -28,13 +28,12 @@ import {
 } from 'lucide-react';
 
 export const AllLeadsPage: React.FC = () => {
-  const { user, isTeamLead } = useAuth();
+  const { user } = useAuth();
   const { success, error: showError } = useToast();
   const queryClient = useQueryClient();
 
   // Filters (Section 35)
   const [search, setSearch] = useState('');
-  const [teamFilter, setTeamFilter] = useState(isTeamLead ? user?.team || '' : '');
   const [employeeFilter, setEmployeeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [typeFilter, setTypeFilter] = useState('ALL');
@@ -73,7 +72,6 @@ export const AllLeadsPage: React.FC = () => {
     queryKey: [
       'all-leads',
       search,
-      teamFilter,
       employeeFilter,
       statusFilter,
       typeFilter,
@@ -86,7 +84,6 @@ export const AllLeadsPage: React.FC = () => {
     queryFn: async () => {
       const res = await api.get('/leads', {
         search,
-        team: teamFilter || undefined,
         employee_id: employeeFilter || undefined,
         status: statusFilter,
         lead_type: typeFilter,
@@ -145,7 +142,6 @@ export const AllLeadsPage: React.FC = () => {
       `parul-all-leads-${new Date().toISOString().split('T')[0]}.csv`,
       {
         search,
-        team: teamFilter || undefined,
         employee_id: employeeFilter || undefined,
         status: statusFilter,
         lead_type: typeFilter,
@@ -163,7 +159,6 @@ export const AllLeadsPage: React.FC = () => {
 
   const resetFilters = () => {
     setSearch('');
-    if (!isTeamLead) setTeamFilter('');
     setEmployeeFilter('');
     setStatusFilter('ALL');
     setTypeFilter('ALL');
@@ -225,25 +220,8 @@ export const AllLeadsPage: React.FC = () => {
             />
           </div>
 
-          {/* Team Filter (disabled if team lead is locked to their team) */}
-          <div className="lg:col-span-2">
-            <select
-              value={teamFilter}
-              disabled={isTeamLead}
-              onChange={(e) => {
-                setTeamFilter(e.target.value);
-                setPage(1);
-              }}
-              className="w-full rounded-xl px-3 py-2 text-xs sm:text-sm glass-input text-white cursor-pointer disabled:opacity-50"
-            >
-              <option value="" className="bg-slate-900">All Teams</option>
-              <option value="Team A" className="bg-slate-900">Team A</option>
-              <option value="Team B" className="bg-slate-900">Team B</option>
-            </select>
-          </div>
-
           {/* Counsellor Filter */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-3">
             <select
               value={employeeFilter}
               onChange={(e) => {
@@ -255,14 +233,14 @@ export const AllLeadsPage: React.FC = () => {
               <option value="" className="bg-slate-900">All Counsellors</option>
               {counsellors.map((c: any) => (
                 <option key={c.id} value={c.id} className="bg-slate-900">
-                  {c.full_name} ({c.team})
+                  {c.full_name}
                 </option>
               ))}
             </select>
           </div>
 
           {/* Status Filter */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-3">
             <select
               value={statusFilter}
               onChange={(e) => {
@@ -350,7 +328,6 @@ export const AllLeadsPage: React.FC = () => {
                     <th scope="col" className="px-4 py-3.5 font-bold">Candidate</th>
                     <th scope="col" className="px-4 py-3.5 font-bold">Mobile</th>
                     <th scope="col" className="px-4 py-3.5 font-bold">Counsellor</th>
-                    <th scope="col" className="px-4 py-3.5 font-bold">Team</th>
                     <th scope="col" className="px-4 py-3.5 font-bold">Channel</th>
                     <th scope="col" className="px-4 py-3.5 font-bold">Course</th>
                     <th scope="col" className="px-4 py-3.5 font-bold">Status</th>
@@ -392,9 +369,6 @@ export const AllLeadsPage: React.FC = () => {
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap font-medium text-slate-200">
                           {lead.employee_name || 'Staff'}
-                        </td>
-                        <td className="px-4 py-3.5 whitespace-nowrap text-xs text-slate-400">
-                          {lead.employee_team || '—'}
                         </td>
                         <td className="px-4 py-3.5">
                           <Badge variant="type" value={lead.lead_type} size="sm">
@@ -483,7 +457,7 @@ export const AllLeadsPage: React.FC = () => {
                     </div>
 
                     <div className="flex items-center justify-between text-xs text-slate-400">
-                      <span>Counsellor: {lead.employee_name} ({lead.employee_team})</span>
+                      <span>Counsellor: {lead.employee_name}</span>
                       <Badge variant="type" value={lead.lead_type} size="sm">
                         {lead.lead_type}
                       </Badge>
@@ -562,7 +536,7 @@ export const AllLeadsPage: React.FC = () => {
               <option value="" className="bg-slate-900">Select Counsellor...</option>
               {counsellors.map((c: any) => (
                 <option key={c.id} value={c.id} className="bg-slate-900">
-                  {c.full_name} ({c.team})
+                  {c.full_name}
                 </option>
               ))}
             </select>

@@ -35,13 +35,12 @@ export const TeamManagementPage: React.FC = () => {
   } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // New User Form State (Section 40)
+  // New User Form State
   const [newFullName, setNewFullName] = useState('');
   const [newUsername, setNewUsername] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('Welcome@123');
-  const [newRole, setNewRole] = useState<'employee' | 'team_lead' | 'manager'>('employee');
-  const [newTeam, setNewTeam] = useState('Team A');
+  const [newRole, setNewRole] = useState<'employee' | 'manager'>('employee');
   const [newPhone, setNewPhone] = useState('');
 
   // Fetch Users
@@ -64,7 +63,7 @@ export const TeamManagementPage: React.FC = () => {
 
   const statsMap = new Map(stats.map((s: any) => [s.id, s]));
 
-  // Create User Mutation (Section 40)
+  // Create User Mutation
   const createUserMutation = useMutation({
     mutationFn: () =>
       api.post('/users', {
@@ -73,11 +72,10 @@ export const TeamManagementPage: React.FC = () => {
         email: newEmail,
         password: newPassword,
         role: newRole,
-        team: newTeam,
         phone: newPhone,
       }),
     onSuccess: (res: any) => {
-      success(res.message || 'Counsellor onboarded successfully');
+      success(res.message || 'Staff member onboarded successfully');
       setIsAddUserModalOpen(false);
       setNewFullName('');
       setNewUsername('');
@@ -111,7 +109,6 @@ export const TeamManagementPage: React.FC = () => {
       api.patch(`/users/${editingUser.id}`, {
         full_name: editingUser.full_name,
         role: editingUser.role,
-        team: editingUser.team,
         phone: editingUser.phone,
       }),
     onSuccess: () => {
@@ -149,10 +146,10 @@ export const TeamManagementPage: React.FC = () => {
         <div>
           <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
             <Users className="w-6 h-6 text-pu-gold" />
-            <span>Admission Team Management</span>
+            <span>Staff & Counsellor Management</span>
           </h2>
           <p className="text-xs sm:text-sm text-slate-300 mt-1">
-            Manage counselling staff, assign teams, onboard new team members, and monitor compliance.
+            Manage counselling staff, onboard new members, reset credentials, and monitor performance.
           </p>
         </div>
 
@@ -162,14 +159,14 @@ export const TeamManagementPage: React.FC = () => {
           leftIcon={<UserPlus className="w-4 h-4" />}
           onClick={() => setIsAddUserModalOpen(true)}
         >
-          Add New Team Member
+          Add Staff Member
         </Button>
       </div>
 
       {/* Users Table */}
       <GlassCard variant="default" padding="none">
         <div className="p-4 border-b border-white/10 flex items-center justify-between">
-          <span className="text-sm font-bold text-white">Active Counselling Team</span>
+          <span className="text-sm font-bold text-white">Counselling Staff</span>
           <span className="text-xs text-slate-400">{users.length} Total Users</span>
         </div>
 
@@ -179,7 +176,6 @@ export const TeamManagementPage: React.FC = () => {
               <tr>
                 <th scope="col" className="px-4 py-3.5 font-bold">Staff Member</th>
                 <th scope="col" className="px-4 py-3.5 font-bold">Role</th>
-                <th scope="col" className="px-4 py-3.5 font-bold">Team</th>
                 <th scope="col" className="px-4 py-3.5 font-bold">Status</th>
                 <th scope="col" className="px-4 py-3.5 font-bold">Total Leads</th>
                 <th scope="col" className="px-4 py-3.5 font-bold">Admissions</th>
@@ -209,9 +205,6 @@ export const TeamManagementPage: React.FC = () => {
                       <Badge variant="role" value={u.role} size="sm">
                         {u.role}
                       </Badge>
-                    </td>
-                    <td className="px-4 py-3.5 whitespace-nowrap font-medium text-slate-200">
-                      {u.team || 'Unassigned'}
                     </td>
                     <td className="px-4 py-3.5 whitespace-nowrap">
                       {u.must_change_password ? (
@@ -344,28 +337,15 @@ export const TeamManagementPage: React.FC = () => {
             required
           />
 
-          <div className="grid grid-cols-2 gap-3">
-            <Select
-              label="Role"
-              value={newRole}
-              onChange={(e) => setNewRole(e.target.value as any)}
-              options={[
-                { value: 'employee', label: 'Admission Counsellor (Employee)' },
-                { value: 'team_lead', label: 'Team Lead' },
-                { value: 'manager', label: 'Manager' },
-              ]}
-            />
-
-            <Select
-              label="Assigned Team"
-              value={newTeam}
-              onChange={(e) => setNewTeam(e.target.value)}
-              options={[
-                { value: 'Team A', label: 'Team A' },
-                { value: 'Team B', label: 'Team B' },
-              ]}
-            />
-          </div>
+          <Select
+            label="Role"
+            value={newRole}
+            onChange={(e) => setNewRole(e.target.value as any)}
+            options={[
+              { value: 'employee', label: 'Admission Counsellor' },
+              { value: 'manager', label: 'Manager / Administrator' },
+            ]}
+          />
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
             <Button
@@ -406,27 +386,14 @@ export const TeamManagementPage: React.FC = () => {
             />
 
             <Select
-              label="Team"
-              value={editingUser.team || ''}
-              onChange={(e) =>
-                setEditingUser({ ...editingUser, team: e.target.value })
-              }
-              options={[
-                { value: 'Team A', label: 'Team A' },
-                { value: 'Team B', label: 'Team B' },
-              ]}
-            />
-
-            <Select
               label="Role"
               value={editingUser.role}
               onChange={(e) =>
                 setEditingUser({ ...editingUser, role: e.target.value })
               }
               options={[
-                { value: 'employee', label: 'Employee' },
-                { value: 'team_lead', label: 'Team Lead' },
-                { value: 'manager', label: 'Manager' },
+                { value: 'employee', label: 'Admission Counsellor' },
+                { value: 'manager', label: 'Manager / Administrator' },
               ]}
             />
 

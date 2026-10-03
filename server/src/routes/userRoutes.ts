@@ -23,8 +23,8 @@ router.use(authenticate);
 // Employee changes own password (e.g. after forced temporary password reset)
 router.post('/me/change-password', changeOwnPassword);
 
-// Team lead, manager, and admin can view team members
-router.get('/', requireRole('manager', 'team_lead', 'admin'), getAllUsers);
+// Manager and admin can view staff members
+router.get('/', requireRole('manager', 'admin'), getAllUsers);
 
 // Only manager and admin can create/modify users
 router.post(

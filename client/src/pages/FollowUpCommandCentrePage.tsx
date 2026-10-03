@@ -66,7 +66,6 @@ export const FollowUpCommandCentrePage: React.FC = () => {
   const { success, error: showError } = useToast();
   const queryClient = useQueryClient();
 
-  const [teamFilter, setTeamFilter] = useState('');
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -84,10 +83,9 @@ export const FollowUpCommandCentrePage: React.FC = () => {
 
   // Fetch all follow-ups
   const { data: followUps = [], isLoading, refetch } = useQuery({
-    queryKey: ['command-centre-followups', teamFilter],
+    queryKey: ['command-centre-followups'],
     queryFn: async () => {
       const res = await api.get('/follow-ups', {
-        team: teamFilter || undefined,
         group: 'ALL',
       });
       return res.data || [];
@@ -172,19 +170,6 @@ export const FollowUpCommandCentrePage: React.FC = () => {
           <p className="text-xs sm:text-sm text-slate-300 mt-1">
             Visual pipeline organizing prospective students across timeline stages with quick rescheduling.
           </p>
-        </div>
-
-        {/* Team Filter */}
-        <div className="flex items-center gap-3">
-          <select
-            value={teamFilter}
-            onChange={(e) => setTeamFilter(e.target.value)}
-            className="rounded-xl px-3 py-2 text-xs glass-input text-white cursor-pointer"
-          >
-            <option value="" className="bg-slate-900">All Teams</option>
-            <option value="Team A" className="bg-slate-900">Team A</option>
-            <option value="Team B" className="bg-slate-900">Team B</option>
-          </select>
         </div>
       </div>
 

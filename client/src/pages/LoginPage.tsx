@@ -20,14 +20,10 @@ export const LoginPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Quick fill demo credentials
-  const fillCredentials = (type: 'manager' | 'teamlead' | 'employee') => {
+  const fillCredentials = (type: 'manager' | 'employee') => {
     if (type === 'manager') {
       setUsername('manager');
       setPassword('admin123');
-      setSelectedRoleHint('manager');
-    } else if (type === 'teamlead') {
-      setUsername('teamlead1');
-      setPassword('lead123');
       setSelectedRoleHint('manager');
     } else {
       setUsername('employee1');
@@ -248,7 +244,7 @@ export const LoginPage: React.FC = () => {
                 <span>Quick Test Logins:</span>
                 <span className="text-[10px] text-pu-gold">One-click populate</span>
               </div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => fillCredentials('manager')}
@@ -258,17 +254,10 @@ export const LoginPage: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => fillCredentials('teamlead')}
-                  className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-[11px] font-medium text-center truncate"
-                >
-                  Team Lead 1
-                </button>
-                <button
-                  type="button"
                   onClick={() => fillCredentials('employee')}
                   className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-[11px] font-medium text-center truncate"
                 >
-                  Employee 1
+                  Counsellor (Employee 1)
                 </button>
               </div>
             </div>

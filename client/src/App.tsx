@@ -77,57 +77,57 @@ function App() {
                 {/* Employee & All-Staff Daily Report (Core Feature) */}
                 <Route path="/report" element={<DailyReportPage />} />
 
-                {/* My Leads (Employee & Team Lead) */}
+                {/* My Leads (Employee, Manager, Admin) */}
                 <Route
                   path="/my-leads"
                   element={
-                    <ProtectedRoute allowedRoles={['employee', 'team_lead', 'manager', 'admin']}>
+                    <ProtectedRoute allowedRoles={['employee', 'manager', 'admin']}>
                       <MyLeadsPage />
                     </ProtectedRoute>
                   }
                 />
 
-                {/* Follow-ups Queue (Employee & Team Lead) */}
+                {/* Follow-ups Queue (Employee, Manager, Admin) */}
                 <Route
                   path="/follow-ups"
                   element={
-                    <ProtectedRoute allowedRoles={['employee', 'team_lead', 'manager', 'admin']}>
+                    <ProtectedRoute allowedRoles={['employee', 'manager', 'admin']}>
                       <FollowUpsPage />
                     </ProtectedRoute>
                   }
                 />
 
-                {/* Manager & Team Lead Dashboard */}
+                {/* Manager & Admin Dashboard */}
                 <Route
                   path="/dashboard"
                   element={
-                    <ProtectedRoute allowedRoles={['team_lead', 'manager', 'admin']}>
+                    <ProtectedRoute allowedRoles={['manager', 'admin']}>
                       <ManagerDashboardPage />
                     </ProtectedRoute>
                   }
                 />
 
-                {/* All Leads (Manager, Team Lead, Admin) */}
+                {/* All Leads (Manager, Admin) */}
                 <Route
                   path="/leads"
                   element={
-                    <ProtectedRoute allowedRoles={['team_lead', 'manager', 'admin']}>
+                    <ProtectedRoute allowedRoles={['manager', 'admin']}>
                       <AllLeadsPage />
                     </ProtectedRoute>
                   }
                 />
 
-                {/* Follow-up Command Centre (Manager, Team Lead, Admin) */}
+                {/* Follow-up Command Centre (Manager, Admin) */}
                 <Route
                   path="/followups"
                   element={
-                    <ProtectedRoute allowedRoles={['team_lead', 'manager', 'admin']}>
+                    <ProtectedRoute allowedRoles={['manager', 'admin']}>
                       <FollowUpCommandCentrePage />
                     </ProtectedRoute>
                   }
                 />
 
-                {/* Team Management (Manager & Admin only) */}
+                {/* Staff & Counsellor Management (Manager & Admin only) */}
                 <Route
                   path="/team"
                   element={

@@ -208,7 +208,7 @@ export const LeadDetailDrawer: React.FC<LeadDetailDrawerProps> = ({
               <div>
                 <span className="text-slate-500 block">Assigned Counsellor:</span>
                 <span className="font-semibold text-white">
-                  {lead.employee_name || 'Staff Member'} ({lead.employee_team || 'Team'})
+                  {lead.employee_name || 'Staff Member'}
                 </span>
               </div>
               <div>
