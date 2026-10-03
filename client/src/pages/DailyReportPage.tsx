@@ -42,20 +42,22 @@ interface LeadFormRow {
 }
 
 const COMMON_COURSES = [
-  'B.Tech Computer Science & Engg',
-  'B.Tech Artificial Intelligence & ML',
-  'B.Tech Mechanical Engineering',
-  'MBA Dual Specialization',
-  'MBA Healthcare Management',
-  'BBA Honours',
-  'B.Des Fashion & Product Design',
-  'MCA Cloud Computing',
-  'B.Pharm Pharmaceutical Tech',
-  'B.Sc Nursing',
-  'BPT Physiotherapy',
-  'LLB Law Honours',
-  'B.Com Banking & Insurance',
-  'Other Diploma / Certificate',
+  'Diploma in Blockchain Technology',
+  'Diploma in Business Analytics',
+  'Diploma in Digital Marketing',
+  'Diploma in Financial Services & Portfolio Management',
+  'PG Diploma in Industrial Relations & Personnel Management',
+  'Bachelor of Arts (General)',
+  'Bachelor of Business Administration',
+  'Bachelor of Computer Applications',
+  'Master of Business Administration',
+  'Master of Computer Applications',
+  'Master of Arts (Journalism and Mass Communication)',
+  'Master of Arts (English Language Teaching)',
+  'Master of Commerce',
+  'Master of Social Work',
+  'Master of Science (Applied Mathematics)',
+  'offline-regular'
 ];
 
 const STATUS_OPTIONS = [
