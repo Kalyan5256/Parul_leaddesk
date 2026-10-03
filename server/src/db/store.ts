@@ -86,9 +86,22 @@ class DatabaseStore {
         }
       }
 
-      const { data: leads, error: lErr } = await supabaseAdmin.from('leads').select('*');
+      const userMap = new Map(this.users.map((u) => [u.id, u]));
+
+      const { data: leads, error: lErr } = await supabaseAdmin
+        .from('leads')
+        .select('*')
+        .order('created_at', { ascending: false });
+
       if (leads && !lErr) {
-        this.leads = leads;
+        this.leads = leads.map((l: any) => {
+          const emp = userMap.get(l.employee_id);
+          return {
+            ...l,
+            employee_name: emp?.full_name || l.employee_name || 'Staff',
+            employee_team: emp?.team || l.employee_team || '',
+          };
+        });
       }
 
       const { data: reports, error: rErr } = await supabaseAdmin.from('daily_reports').select('*');
@@ -96,9 +109,23 @@ class DatabaseStore {
         this.dailyReports = reports;
       }
 
-      const { data: followUps, error: fErr } = await supabaseAdmin.from('follow_ups').select('*');
+      const { data: followUps, error: fErr } = await supabaseAdmin
+        .from('follow_ups')
+        .select('*')
+        .order('created_at', { ascending: false });
+
       if (followUps && !fErr) {
-        this.followUps = followUps;
+        const leadMap = new Map(this.leads.map((l) => [l.id, l]));
+        this.followUps = followUps.map((f: any) => {
+          const emp = userMap.get(f.employee_id);
+          const ld = leadMap.get(f.lead_id);
+          return {
+            ...f,
+            employee_name: emp?.full_name || f.employee_name || 'Staff',
+            lead_name: ld?.lead_name || f.lead_name || 'Student',
+            lead_mobile: ld?.mobile || f.lead_mobile || '',
+          };
+        });
       }
     } catch (err: any) {
       console.warn('Supabase sync notice:', err.message);
@@ -644,6 +671,9 @@ class DatabaseStore {
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   }): Promise<{ leads: Lead[]; total: number }> {
+    if (supabaseAdmin && this.leads.length === 0) {
+      await this.syncFromSupabase();
+    }
     let result = [...this.leads];
 
     // Filter by employee
@@ -712,6 +742,20 @@ class DatabaseStore {
   }
 
   async checkDuplicateMobiles(mobiles: string[]): Promise<string[]> {
+    if (supabaseAdmin && mobiles.length > 0) {
+      try {
+        const { data, error } = await supabaseAdmin
+          .from('leads')
+          .select('mobile')
+          .in('mobile', mobiles);
+        if (data && !error) {
+          const set = new Set(data.map((d: any) => d.mobile));
+          return Array.from(set);
+        }
+      } catch (err) {
+        console.warn('Supabase duplicate check fallback:', err);
+      }
+    }
     const existing = new Set(this.leads.map((l) => l.mobile));
     const duplicates: string[] = [];
     for (const m of mobiles) {
@@ -740,8 +784,141 @@ class DatabaseStore {
     if (!emp) throw new Error('Employee not found');
 
     const createdTime = new Date().toISOString();
-    const newLeads: Lead[] = [];
 
+    if (supabaseAdmin) {
+      const dbLeadsPayload = rawLeads.map((item) => ({
+        employee_id,
+        report_date,
+        lead_name: item.lead_name.trim(),
+        mobile: item.mobile.trim(),
+        lead_type: item.lead_type,
+        course: item.course.trim(),
+        status: item.status,
+        follow_up_date: item.follow_up_date || null,
+        follow_up_time: item.follow_up_time
+          ? (item.follow_up_time.length === 5 ? `${item.follow_up_time}:00` : item.follow_up_time)
+          : null,
+        is_notified: false,
+        remarks: item.remarks || null,
+      }));
+
+      const { data: insertedDbLeads, error: insertLeadErr } = await supabaseAdmin
+        .from('leads')
+        .insert(dbLeadsPayload)
+        .select('*');
+
+      if (insertLeadErr || !insertedDbLeads) {
+        console.error('Failed to insert leads into Supabase:', insertLeadErr);
+        throw new Error(`Database error saving leads: ${insertLeadErr?.message || 'Unknown database error'}`);
+      }
+
+      // Insert follow-ups for leads with a follow-up date
+      const followUpsPayload: any[] = [];
+      insertedDbLeads.forEach((dbLead: any) => {
+        if (dbLead.follow_up_date) {
+          followUpsPayload.push({
+            lead_id: dbLead.id,
+            employee_id,
+            follow_up_date: dbLead.follow_up_date,
+            follow_up_time: dbLead.follow_up_time || null,
+            is_notified: false,
+            status: dbLead.status,
+            note: dbLead.remarks || 'Initial follow up scheduled during daily report submission',
+          });
+        }
+      });
+
+      let insertedDbFollowUps: any[] = [];
+      if (followUpsPayload.length > 0) {
+        const { data: fuData, error: fuErr } = await supabaseAdmin
+          .from('follow_ups')
+          .insert(followUpsPayload)
+          .select('*');
+
+        if (fuErr) {
+          console.error('Failed to insert follow-ups into Supabase:', fuErr);
+        } else if (fuData) {
+          insertedDbFollowUps = fuData;
+        }
+      }
+
+      // Upsert daily report in Supabase
+      const { count: totalEmpDayLeads } = await supabaseAdmin
+        .from('leads')
+        .select('*', { count: 'exact', head: true })
+        .eq('employee_id', employee_id)
+        .eq('report_date', report_date);
+
+      const actualLeadCount = totalEmpDayLeads ?? insertedDbLeads.length;
+      const nowIso = new Date().toISOString();
+
+      const { data: dbReport, error: repErr } = await supabaseAdmin
+        .from('daily_reports')
+        .upsert(
+          {
+            employee_id,
+            report_date,
+            lead_count: actualLeadCount,
+            submitted_at: nowIso,
+          },
+          { onConflict: 'employee_id,report_date' }
+        )
+        .select('*')
+        .single();
+
+      if (repErr) {
+        console.error('Failed to upsert daily_reports in Supabase:', repErr);
+      }
+
+      // Update in-memory cache with persisted Supabase rows
+      const formattedLeads: Lead[] = insertedDbLeads.map((dbLead: any) => ({
+        ...dbLead,
+        employee_name: emp.full_name,
+        employee_team: emp.team || '',
+      }));
+
+      const newLeadIds = new Set(formattedLeads.map((l) => l.id));
+      this.leads = [...formattedLeads, ...this.leads.filter((l) => !newLeadIds.has(l.id))];
+
+      const formattedFollowUps: FollowUp[] = insertedDbFollowUps.map((dbFu: any) => {
+        const matchingLead = formattedLeads.find((l) => l.id === dbFu.lead_id);
+        return {
+          ...dbFu,
+          employee_name: emp.full_name,
+          lead_name: matchingLead?.lead_name || 'Student',
+          lead_mobile: matchingLead?.mobile || '',
+        };
+      });
+
+      const newFuIds = new Set(formattedFollowUps.map((f) => f.id));
+      this.followUps = [...formattedFollowUps, ...this.followUps.filter((f) => !newFuIds.has(f.id))];
+
+      const finalReport: DailyReport = dbReport || {
+        id: `rep-${employee_id}-${report_date}`,
+        employee_id,
+        report_date,
+        lead_count: actualLeadCount,
+        submitted_at: nowIso,
+      };
+
+      const existingRepIdx = this.dailyReports.findIndex(
+        (r) => r.employee_id === employee_id && r.report_date === report_date
+      );
+      if (existingRepIdx !== -1) {
+        this.dailyReports[existingRepIdx] = finalReport;
+      } else {
+        this.dailyReports.unshift(finalReport);
+      }
+
+      return {
+        insertedCount: formattedLeads.length,
+        leads: formattedLeads,
+        dailyReport: finalReport,
+      };
+    }
+
+    // Fallback if Supabase not configured
+    const newLeads: Lead[] = [];
     for (let i = 0; i < rawLeads.length; i++) {
       const item = rawLeads[i];
       const leadId = `lead-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`;
@@ -767,7 +944,6 @@ class DatabaseStore {
       this.leads.unshift(lead);
       newLeads.push(lead);
 
-      // Create initial follow_up record if follow_up_date is set
       if (item.follow_up_date) {
         this.followUps.unshift({
           id: `fu-${Date.now()}-${i}`,
@@ -786,8 +962,6 @@ class DatabaseStore {
       }
     }
 
-    // Upsert daily report: Section 11 & 25
-    // "If an employee submits another report on the same date: DO NOT overwrite. ADD the new leads. The daily count must reflect the actual number of leads."
     const allEmpLeadsForDate = this.leads.filter(
       (l) => l.employee_id === employee_id && l.report_date === report_date
     );
@@ -839,19 +1013,58 @@ class DatabaseStore {
       }
     }
 
+    const nowIso = new Date().toISOString();
+
+    if (supabaseAdmin) {
+      const dbUpdates: any = {};
+      if (updates.lead_name !== undefined) dbUpdates.lead_name = updates.lead_name.trim();
+      if (updates.mobile !== undefined) dbUpdates.mobile = updates.mobile.trim();
+      if (updates.lead_type !== undefined) dbUpdates.lead_type = updates.lead_type;
+      if (updates.course !== undefined) dbUpdates.course = updates.course.trim();
+      if (updates.status !== undefined) dbUpdates.status = updates.status;
+      if (updates.follow_up_date !== undefined) dbUpdates.follow_up_date = updates.follow_up_date || null;
+      if (updates.follow_up_time !== undefined) {
+        dbUpdates.follow_up_time = updates.follow_up_time
+          ? (updates.follow_up_time.length === 5 ? `${updates.follow_up_time}:00` : updates.follow_up_time)
+          : null;
+      }
+      if (updates.remarks !== undefined) dbUpdates.remarks = updates.remarks || null;
+      if (updates.is_notified !== undefined) dbUpdates.is_notified = updates.is_notified;
+      dbUpdates.updated_at = nowIso;
+
+      const { error: upErr } = await supabaseAdmin
+        .from('leads')
+        .update(dbUpdates)
+        .eq('id', id);
+
+      if (upErr) {
+        console.error('Failed to update lead in Supabase:', upErr);
+        throw new Error(`Database error updating lead: ${upErr.message}`);
+      }
+    }
+
     const updatedLead: Lead = {
       ...lead,
       ...updates,
-      updated_at: new Date().toISOString(),
+      updated_at: nowIso,
     };
 
     const index = this.leads.findIndex((l) => l.id === id);
-    this.leads[index] = updatedLead;
+    if (index !== -1) {
+      this.leads[index] = updatedLead;
+    }
 
     return updatedLead;
   }
 
   async deleteLead(id: string): Promise<boolean> {
+    if (supabaseAdmin) {
+      const { error: delErr } = await supabaseAdmin.from('leads').delete().eq('id', id);
+      if (delErr) {
+        console.error('Failed to delete lead from Supabase:', delErr);
+      }
+    }
+
     const index = this.leads.findIndex((l) => l.id === id);
     if (index === -1) return false;
     this.leads.splice(index, 1);
@@ -863,8 +1076,19 @@ class DatabaseStore {
     const targetEmp = await this.getUserById(targetEmployeeId);
     if (!targetEmp) throw new Error('Target employee not found');
 
-    let count = 0;
     const now = new Date().toISOString();
+
+    if (supabaseAdmin && leadIds.length > 0) {
+      const { error: assignErr } = await supabaseAdmin
+        .from('leads')
+        .update({ employee_id: targetEmployeeId, updated_at: now })
+        .in('id', leadIds);
+      if (assignErr) {
+        console.error('Failed to assign leads in Supabase:', assignErr);
+      }
+    }
+
+    let count = 0;
     for (const id of leadIds) {
       const lead = this.leads.find((l) => l.id === id);
       if (lead) {
@@ -895,6 +1119,9 @@ class DatabaseStore {
     team?: string;
     group?: 'OVERDUE' | 'TODAY' | 'UPCOMING' | 'COMPLETED' | 'ALL';
   }): Promise<FollowUp[]> {
+    if (supabaseAdmin && this.followUps.length === 0) {
+      await this.syncFromSupabase();
+    }
     let result = [...this.followUps];
     const todayStr = new Date().toISOString().split('T')[0];
 
@@ -939,16 +1166,61 @@ class DatabaseStore {
 
     const emp = await this.getUserById(data.employee_id);
     const now = new Date().toISOString();
+    const formattedTime = data.follow_up_time
+      ? (data.follow_up_time.length === 5 ? `${data.follow_up_time}:00` : data.follow_up_time)
+      : null;
+
+    let fuId = `fu-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+    if (supabaseAdmin) {
+      const { data: dbFu, error: fuErr } = await supabaseAdmin
+        .from('follow_ups')
+        .insert({
+          lead_id: data.lead_id,
+          employee_id: data.employee_id,
+          follow_up_date: data.follow_up_date,
+          follow_up_time: formattedTime,
+          is_notified: false,
+          status: data.status,
+          note: data.note || null,
+        })
+        .select('*')
+        .single();
+
+      if (fuErr) {
+        console.error('Failed to insert follow-up into Supabase:', fuErr);
+        throw new Error(`Database error saving follow-up: ${fuErr.message}`);
+      }
+      if (dbFu) {
+        fuId = dbFu.id;
+      }
+
+      // Update lead follow-up date and status in Supabase
+      const { error: leadUpErr } = await supabaseAdmin
+        .from('leads')
+        .update({
+          follow_up_date: data.follow_up_date,
+          follow_up_time: formattedTime,
+          status: data.status,
+          is_notified: false,
+          updated_at: now,
+        })
+        .eq('id', data.lead_id);
+
+      if (leadUpErr) {
+        console.warn('Notice updating lead follow_up schedule in Supabase:', leadUpErr);
+      }
+    }
 
     const fu: FollowUp = {
-      id: `fu-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: fuId,
       lead_id: data.lead_id,
       employee_id: data.employee_id,
       employee_name: emp?.full_name || 'Staff',
       lead_name: lead.lead_name,
       lead_mobile: lead.mobile,
       follow_up_date: data.follow_up_date,
-      follow_up_time: data.follow_up_time || null,
+      follow_up_time: formattedTime,
       is_notified: false,
       status: data.status,
       note: data.note || null,
@@ -957,9 +1229,9 @@ class DatabaseStore {
 
     this.followUps.unshift(fu);
 
-    // Update lead follow_up_date, follow_up_time, and status
+    // Update lead in-memory
     lead.follow_up_date = data.follow_up_date;
-    lead.follow_up_time = data.follow_up_time || null;
+    lead.follow_up_time = formattedTime;
     lead.is_notified = false;
     if (data.status) {
       lead.status = data.status as LeadStatus;
@@ -976,13 +1248,57 @@ class DatabaseStore {
     const fu = this.followUps.find((f) => f.id === id);
     if (!fu) return null;
 
-    Object.assign(fu, updates);
-    // Also sync back to lead
+    const formattedTime = updates.follow_up_time !== undefined
+      ? (updates.follow_up_time && updates.follow_up_time.length === 5 ? `${updates.follow_up_time}:00` : updates.follow_up_time)
+      : undefined;
+
+    if (supabaseAdmin) {
+      const dbUpdates: any = {};
+      if (updates.follow_up_date !== undefined) dbUpdates.follow_up_date = updates.follow_up_date;
+      if (formattedTime !== undefined) dbUpdates.follow_up_time = formattedTime;
+      if (updates.status !== undefined) dbUpdates.status = updates.status;
+      if (updates.note !== undefined) dbUpdates.note = updates.note;
+      if (updates.is_notified !== undefined) dbUpdates.is_notified = updates.is_notified;
+
+      const { error: fuErr } = await supabaseAdmin
+        .from('follow_ups')
+        .update(dbUpdates)
+        .eq('id', id);
+
+      if (fuErr) {
+        console.error('Failed to update follow-up in Supabase:', fuErr);
+      }
+
+      if (fu.lead_id) {
+        const leadUpdates: any = { updated_at: new Date().toISOString() };
+        if (updates.follow_up_date !== undefined) leadUpdates.follow_up_date = updates.follow_up_date;
+        if (formattedTime !== undefined) {
+          leadUpdates.follow_up_time = formattedTime;
+          leadUpdates.is_notified = false;
+        }
+        if (updates.status) leadUpdates.status = updates.status;
+
+        const { error: leadErr } = await supabaseAdmin
+          .from('leads')
+          .update(leadUpdates)
+          .eq('id', fu.lead_id);
+
+        if (leadErr) {
+          console.warn('Notice updating lead follow_up schedule in Supabase:', leadErr);
+        }
+      }
+    }
+
+    Object.assign(fu, {
+      ...updates,
+      ...(formattedTime !== undefined ? { follow_up_time: formattedTime } : {}),
+    });
+
     const lead = this.leads.find((l) => l.id === fu.lead_id);
     if (lead) {
       if (updates.follow_up_date !== undefined) lead.follow_up_date = updates.follow_up_date;
-      if (updates.follow_up_time !== undefined) {
-        lead.follow_up_time = updates.follow_up_time;
+      if (formattedTime !== undefined) {
+        lead.follow_up_time = formattedTime;
         lead.is_notified = false;
         fu.is_notified = false;
       }
@@ -994,6 +1310,21 @@ class DatabaseStore {
 
   // --- REPORTING & KPI METHODS (Real Database Computations) ---
   async getDailySummary(employee_id: string, date: string): Promise<DailyReport | null> {
+    if (supabaseAdmin) {
+      try {
+        const { data, error } = await supabaseAdmin
+          .from('daily_reports')
+          .select('*')
+          .eq('employee_id', employee_id)
+          .eq('report_date', date)
+          .maybeSingle();
+        if (data && !error) {
+          return data;
+        }
+      } catch (err) {
+        console.warn('Supabase getDailySummary fallback:', err);
+      }
+    }
     return (
       this.dailyReports.find(
         (r) => r.employee_id === employee_id && r.report_date === date
@@ -1002,6 +1333,9 @@ class DatabaseStore {
   }
 
   async getKPIs(filters?: { employee_id?: string; team?: string; startDate?: string; endDate?: string }) {
+    if (supabaseAdmin && this.leads.length === 0) {
+      await this.syncFromSupabase();
+    }
     let leads = [...this.leads];
     if (filters?.employee_id) {
       leads = leads.filter((l) => l.employee_id === filters.employee_id);
@@ -1066,6 +1400,9 @@ class DatabaseStore {
   }
 
   async getEmployeeLeaderboard(filters?: { team?: string }) {
+    if (supabaseAdmin && this.leads.length === 0) {
+      await this.syncFromSupabase();
+    }
     const employees = this.users.filter((u) => u.role === 'employee');
     const todayStr = new Date().toISOString().split('T')[0];
     const sevenDaysAgoStr = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
