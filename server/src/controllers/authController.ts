@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { dbStore } from '../db/store.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
+import { supabaseAdmin } from '../lib/supabase.js';
 
 const JWT_SECRET = process.env.SUPABASE_JWT_SECRET || 'parul_leaddesk_dev_jwt_super_secret_key_2026_safe';
 
@@ -66,6 +67,88 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       success: false,
       message: 'Internal server error during authentication',
       code: 'AUTH_FAILED',
+    });
+  }
+};
+
+// Public Registration for Employees ONLY
+export const registerEmployee = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { full_name, username, email, password, team, phone } = req.body;
+
+    // Check duplicate username or email
+    const existing = await dbStore.getUserByUsernameOrEmail(username);
+    if (existing) {
+      res.status(400).json({
+        success: false,
+        message: 'Username or email is already registered in the system',
+        code: 'USER_ALREADY_EXISTS',
+      });
+      return;
+    }
+
+    // Role is strictly enforced as employee
+    const newUser = await dbStore.createUser({
+      full_name,
+      username,
+      email,
+      role: 'employee',
+      team: team || 'Team A',
+      phone: phone || null,
+      password,
+    });
+
+    // Also sync to Supabase if configured
+    if (supabaseAdmin) {
+      try {
+        const { data: authData } = await supabaseAdmin.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: { username, full_name, role: 'employee' },
+        });
+        if (authData?.user?.id) {
+          await supabaseAdmin.from('profiles').upsert({
+            id: authData.user.id,
+            full_name,
+            username,
+            email,
+            role: 'employee',
+            team: team || 'Team A',
+            phone: phone || null,
+            is_active: true,
+          });
+        }
+      } catch (sbErr) {
+        console.warn('Optional Supabase background sync on register:', sbErr);
+      }
+    }
+
+    // Generate JWT
+    const token = jwt.sign(
+      {
+        sub: newUser.id,
+        id: newUser.id,
+        role: newUser.role,
+        username: newUser.username,
+        email: newUser.email,
+      },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Counsellor registration successful! Welcome to Parul LeadDesk.',
+      token,
+      user: newUser,
+    });
+  } catch (error: any) {
+    console.error('Registration error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Registration failed',
+      code: 'REGISTRATION_FAILED',
     });
   }
 };

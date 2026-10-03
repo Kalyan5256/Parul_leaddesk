@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { ParulLogo } from '../components/common/ParulLogo';
@@ -230,6 +230,13 @@ export const LoginPage: React.FC = () => {
               >
                 Sign In to LeadDesk
               </Button>
+
+              <div className="text-center pt-1 text-xs text-slate-300">
+                New counsellor?{' '}
+                <Link to="/register" className="text-pu-gold hover:underline font-bold">
+                  Register your desk account →
+                </Link>
+              </div>
             </form>
 
             {/* Quick Demo Credentials Panel for Reviewer / Evaluation */}

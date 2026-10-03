@@ -8,6 +8,7 @@ import { AppLayout } from './components/layout/AppLayout';
 
 // Pages
 import { LoginPage } from './pages/LoginPage';
+import { RegisterPage } from './pages/RegisterPage';
 import { DailyReportPage } from './pages/DailyReportPage';
 import { MyLeadsPage } from './pages/MyLeadsPage';
 import { FollowUpsPage } from './pages/FollowUpsPage';
@@ -46,8 +47,9 @@ function App() {
         <AuthProvider>
           <BrowserRouter>
             <Routes>
-              {/* Public Login Route */}
+              {/* Public Auth Routes */}
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
 
               {/* Protected App Routes with Unified Layout */}
               <Route
