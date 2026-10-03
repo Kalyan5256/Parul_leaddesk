@@ -162,23 +162,45 @@ node test-acceptance-scenarios.js
 
 ---
 
-## 👥 Demo Test Credentials
+## 🔐 User Account Creation & Management
 
-Pre-seeded for instant development and evaluation:
+In production, public self-registration is completely disabled for security. Accounts are provisioned through privileged administrative workflows.
 
-| Role | Username | Password | Assigned Scope |
-| :--- | :--- | :--- | :--- |
-| **Manager** | `manager` | `admin123` | Institutional (All Teams & Leads) |
-| **Team Lead 1** | `teamlead1` | `lead123` | Team A |
-| **Team Lead 2** | `teamlead2` | `lead123` | Team B |
-| **Employee 1** | `employee1` | `1234` | Team A Counsellor |
-| **Employee 2** | `employee2` | `1234` | Team A Counsellor |
-| **Employee 3** | `employee3` | `1234` | Team A Counsellor |
-| **Employee 4** | `employee4` | `1234` | Team B Counsellor |
-| **Employee 5** | `employee5` | `1234` | Team B Counsellor |
-| **Employee 6** | `employee6` | `1234` | Team B Counsellor |
+### 1. Create Initial Manager Account (Terminal CLI)
 
-*(On the login screen, convenient one-click test credential buttons are provided).*
+To provision an authorized Manager account:
+
+```bash
+npm run create-manager
+```
+
+The script interactively prompts:
+- `Manager name:`
+- `Manager email:`
+- `Manager password:` (masked input)
+- `Confirm password:` (masked input)
+
+The account is securely created in Supabase Auth & application database with bcrypt password hashing. Duplicate emails are rejected.
+
+### 2. Reset Manager / Admin Password (Terminal CLI)
+
+To reset credentials for a Manager or Administrator account:
+
+```bash
+npm run reset-manager-password
+```
+
+The script interactively prompts:
+- `Manager/Admin email:`
+- `New password:` (masked input)
+- `Confirm new password:` (masked input)
+
+### 3. Employee (Counsellor) Onboarding Flow
+
+1. Manager logs in to the dashboard and navigates to **Staff Management (`/team`)**.
+2. Manager clicks **Add Staff Member**, enters counsellor details, and provisions a secure temporary password (e.g. `Welcome@ABC123`).
+3. The temporary password is provided privately to the counsellor.
+4. When the counsellor first logs in, the system detects temporary-password status (`must_change_password: true`) and forces them to choose a permanent password before granting desk access.
 
 ---
 

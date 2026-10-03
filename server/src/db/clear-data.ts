@@ -64,37 +64,8 @@ async function clearAllData() {
     await supabase.from('profiles').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
     console.log('\n✨ Database is now completely empty!');
-    console.log('\n👤 Creating fresh Manager account for testing:');
-    console.log('   Email: manager@paruluniversity.ac.in');
-    console.log('   Password: admin123');
-
-    // Create single Manager account so you can log in
-    const { data: authUser, error: authErr } = await supabase.auth.admin.createUser({
-      email: 'manager@paruluniversity.ac.in',
-      password: 'admin123',
-      email_confirm: true,
-      user_metadata: {
-        full_name: 'Dr. Rajesh Parikh (Manager)',
-        role: 'manager',
-        username: 'manager',
-      },
-    });
-
-    if (authErr) {
-      console.warn('⚠️ Note on Manager creation:', authErr.message);
-    } else if (authUser?.user) {
-      await supabase.from('profiles').insert({
-        id: authUser.user.id,
-        full_name: 'Dr. Rajesh Parikh (Manager)',
-        username: 'manager',
-        email: 'manager@paruluniversity.ac.in',
-        role: 'manager',
-        team: null,
-        phone: '9825012345',
-        is_active: true,
-      });
-      console.log('✅ Fresh Manager account created successfully.');
-    }
+    console.log('To create an authorized Manager account, run:');
+    console.log('   npm run create-manager');
 
     console.log('\n======================================================');
     console.log('🎉 ALL DATA CLEARED! READY FOR FRESH MANUAL TESTING.');

@@ -40,10 +40,8 @@ function askInput(promptText: string, isPassword = false): Promise<string> {
             resolve(password.trim());
             return;
           } else if (char === '\u0003') {
-            // Ctrl+C
             process.exit(1);
           } else if (char === '\b' || char === '\x7f') {
-            // Backspace
             if (password.length > 0) {
               password = password.slice(0, -1);
               process.stdout.write('\b \b');
@@ -59,7 +57,6 @@ function askInput(promptText: string, isPassword = false): Promise<string> {
       stdin.resume();
       stdin.on('data', onData);
     } else {
-      // Non-interactive / pipe fallback
       const rl = readline.createInterface({
         input: process.stdin,
         output: process.stdout,
@@ -72,19 +69,13 @@ function askInput(promptText: string, isPassword = false): Promise<string> {
   });
 }
 
-async function runCreateManager() {
+async function runResetManagerPassword() {
   console.log('\n==================================================');
-  console.log('👑 Create Authorized Manager Account');
+  console.log('🔑 Reset Manager / Admin Password');
   console.log('==================================================\n');
 
   try {
-    const fullName = await askInput('Manager name: ');
-    if (!fullName) {
-      console.error('\n❌ Error: Manager name is required.');
-      process.exit(1);
-    }
-
-    const email = await askInput('Manager email: ');
+    const email = await askInput('Manager/Admin email: ');
     if (!email || !email.includes('@')) {
       console.error('\n❌ Error: A valid email address is required.');
       process.exit(1);
@@ -92,14 +83,14 @@ async function runCreateManager() {
 
     const cleanEmail = email.toLowerCase().trim();
 
-    const password = await askInput('Manager password: ', true);
-    if (!password || password.length < 6) {
+    const newPassword = await askInput('New password: ', true);
+    if (!newPassword || newPassword.length < 6) {
       console.error('❌ Error: Password must be at least 6 characters long.');
       process.exit(1);
     }
 
-    const confirmPassword = await askInput('Confirm password: ', true);
-    if (password !== confirmPassword) {
+    const confirmPassword = await askInput('Confirm new password: ', true);
+    if (newPassword !== confirmPassword) {
       console.error('❌ Error: Passwords do not match.');
       process.exit(1);
     }
@@ -114,96 +105,74 @@ async function runCreateManager() {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Check whether email already exists in Supabase Auth
-    const { data: usersData, error: listErr } = await supabase.auth.admin.listUsers();
-    if (listErr) {
-      console.error('❌ Error connecting to authentication service:', listErr.message);
-      process.exit(1);
-    }
-
-    const existingAuthUser = usersData?.users?.find(
-      (u) => u.email?.toLowerCase() === cleanEmail
-    );
-
-    if (existingAuthUser) {
-      console.error(`\n❌ Error: An account with email "${cleanEmail}" already exists. Cannot create duplicate Manager account.`);
-      process.exit(1);
-    }
-
-    // Also check profiles table
-    const { data: existingProfile } = await supabase
+    // 1. Find profile in public.profiles
+    const { data: profile, error: profErr } = await supabase
       .from('profiles')
-      .select('id')
+      .select('id, email, full_name, role')
       .eq('email', cleanEmail)
       .maybeSingle();
 
-    if (existingProfile) {
-      console.error(`\n❌ Error: Profile with email "${cleanEmail}" already exists.`);
+    if (profErr) {
+      console.error('❌ Error checking database profile:', profErr.message);
       process.exit(1);
     }
 
-    // Generate username from email prefix
-    const baseUsername = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_');
-    let username = baseUsername;
-    const { data: existingUsername } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('username', username)
-      .maybeSingle();
+    // Also check Supabase Auth directly if profile is not found
+    let authUserId: string | null = profile?.id || null;
+    let userRole = profile?.role;
 
-    if (existingUsername) {
-      username = `${baseUsername}_${Math.floor(1000 + Math.random() * 9000)}`;
+    if (!authUserId) {
+      const { data: listData } = await supabase.auth.admin.listUsers();
+      const sbAuthUser = listData?.users?.find(
+        (u) => u.email?.toLowerCase() === cleanEmail
+      );
+      if (sbAuthUser) {
+        authUserId = sbAuthUser.id;
+        userRole = (sbAuthUser.user_metadata as any)?.role || 'manager';
+      }
     }
 
-    // Securely hash password using bcrypt
+    if (!authUserId) {
+      console.error(`\n❌ Error: No account found associated with "${cleanEmail}".`);
+      process.exit(1);
+    }
+
+    // Verify privileged role
+    if (userRole && userRole !== 'manager' && userRole !== 'admin') {
+      console.error(`\n❌ Error: Account "${cleanEmail}" has role "${userRole}". This script only resets Manager or Admin accounts.`);
+      process.exit(1);
+    }
+
+    // 2. Hash new password securely
     const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
+    const passwordHash = await bcrypt.hash(newPassword, salt);
 
-    // Create user in Supabase Auth
-    const { data: createdAuth, error: createAuthErr } = await supabase.auth.admin.createUser({
-      email: cleanEmail,
-      password,
-      email_confirm: true,
-      user_metadata: {
-        username,
-        full_name: fullName,
-        role: 'manager',
-      },
+    // 3. Update password in Supabase Auth
+    const { error: authUpdateErr } = await supabase.auth.admin.updateUserById(authUserId, {
+      password: newPassword,
     });
 
-    if (createAuthErr || !createdAuth?.user) {
-      console.error('❌ Failed to create authentication account:', createAuthErr?.message);
+    if (authUpdateErr) {
+      console.error('❌ Error updating Supabase Auth password:', authUpdateErr.message);
       process.exit(1);
     }
 
-    const authId = createdAuth.user.id;
-
-    // Create profile in application profiles table
-    const { error: profileErr } = await supabase.from('profiles').insert({
-      id: authId,
-      full_name: fullName,
-      username,
-      email: cleanEmail,
-      role: 'manager',
-      team: null,
-      phone: null,
-      is_active: true,
-      must_change_password: false,
-    });
-
-    if (profileErr) {
-      console.error('❌ Error creating manager profile in database:', profileErr.message);
-      process.exit(1);
-    }
+    // 4. Update profile record
+    await supabase
+      .from('profiles')
+      .update({
+        must_change_password: false,
+        password_reset_at: new Date().toISOString(),
+      })
+      .eq('id', authUserId);
 
     // Output formatted confirmation - NEVER prints password
-    console.log('\nManager account created successfully.');
-    console.log(`Email: ${cleanEmail}`);
-    console.log('Role: Manager\n');
+    console.log('\nPassword reset successfully.');
+    console.log(`Account: ${cleanEmail}\n`);
   } catch (err: any) {
-    console.error('\n❌ Unexpected error during manager creation:', err.message);
+    console.error('\n❌ Unexpected error during password reset:', err.message);
     process.exit(1);
   }
 }
 
-runCreateManager();
+runResetManagerPassword();

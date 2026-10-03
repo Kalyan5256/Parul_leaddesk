@@ -210,12 +210,9 @@ export const ForgotPasswordPage: React.FC = () => {
                 Generate Password Reset Link
               </Button>
 
-              <div className="flex items-center justify-between text-xs text-slate-300 pt-2">
+              <div className="text-center text-xs text-slate-300 pt-2">
                 <Link to="/login" className="text-pu-gold hover:underline">
                   ← Back to Sign In
-                </Link>
-                <Link to="/register" className="text-slate-400 hover:text-white">
-                  Register new account
                 </Link>
               </div>
             </form>

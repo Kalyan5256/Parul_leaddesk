@@ -77,6 +77,12 @@ export const TeamManagementPage: React.FC = () => {
     onSuccess: (res: any) => {
       success(res.message || 'Staff member onboarded successfully');
       setIsAddUserModalOpen(false);
+      if (res.temporaryPassword) {
+        setTemporaryPasswordData({
+          password: res.temporaryPassword,
+          user: res.data || { full_name: newFullName, username: newUsername, email: newEmail },
+        });
+      }
       setNewFullName('');
       setNewUsername('');
       setNewEmail('');

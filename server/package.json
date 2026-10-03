@@ -9,7 +9,9 @@
     "start": "node dist/index.js",
     "seed": "tsx src/db/seed-supabase.ts",
     "seed:supabase": "tsx src/db/seed-supabase.ts",
+    "create-manager": "tsx src/scripts/create-manager.ts",
     "create:manager": "tsx src/scripts/create-manager.ts",
+    "reset-manager-password": "tsx src/scripts/reset-manager-password.ts",
     "db:clear": "tsx src/db/clear-data.ts"
   },
   "dependencies": {

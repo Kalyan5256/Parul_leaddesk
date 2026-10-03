@@ -12,25 +12,11 @@ export const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const { success, error: showError } = useToast();
 
-  const [username, setUsername] = useState('manager');
-  const [password, setPassword] = useState('admin123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedRoleHint, setSelectedRoleHint] = useState<'employee' | 'manager'>('manager');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Quick fill demo credentials
-  const fillCredentials = (type: 'manager' | 'employee') => {
-    if (type === 'manager') {
-      setUsername('manager');
-      setPassword('admin123');
-      setSelectedRoleHint('manager');
-    } else {
-      setUsername('employee1');
-      setPassword('1234');
-      setSelectedRoleHint('employee');
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,11 +30,6 @@ export const LoginPage: React.FC = () => {
       const userProfile = await login(username, password, rememberMe);
       success(`Welcome back, ${userProfile.full_name}!`);
 
-      // Section 15 route destinations:
-      // employee -> /report
-      // team_lead -> /dashboard
-      // manager -> /dashboard
-      // admin -> /dashboard
       if (userProfile.role === 'employee') {
         navigate('/report');
       } else {
@@ -76,7 +57,7 @@ export const LoginPage: React.FC = () => {
             <div className="mt-8">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-pu-gold/20 text-pu-gold border border-pu-gold/30 mb-4">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Next-Gen Admission Intelligence</span>
+                <span>Admission Intelligence Portal</span>
               </span>
               <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-snug">
                 Zero WhatsApp Chaos.
@@ -113,7 +94,7 @@ export const LoginPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Column: Glass Login Card */}
+        {/* Right Column: Clean Production Login Card */}
         <div className="lg:col-span-6 p-6 sm:p-12 flex flex-col justify-center bg-black/20">
           <div className="max-w-md w-full mx-auto space-y-6">
             <div>
@@ -125,52 +106,12 @@ export const LoginPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Role Toggle UX Hint (Section 15) */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
-                Select Desk Perspective (UX Hint)
-              </label>
-              <div className="grid grid-cols-2 p-1 rounded-xl bg-black/40 border border-white/10">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedRoleHint('employee');
-                    fillCredentials('employee');
-                  }}
-                  className={`py-2 text-xs font-bold rounded-lg transition-all duration-150 ${
-                    selectedRoleHint === 'employee'
-                      ? 'bg-gradient-to-r from-pu-gold to-amber-500 text-pu-navy shadow-md'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Counsellor Desk
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedRoleHint('manager');
-                    fillCredentials('manager');
-                  }}
-                  className={`py-2 text-xs font-bold rounded-lg transition-all duration-150 ${
-                    selectedRoleHint === 'manager'
-                      ? 'bg-gradient-to-r from-pu-gold to-amber-500 text-pu-navy shadow-md'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Manager / Lead
-                </button>
-              </div>
-              <p className="text-[10px] text-slate-400 italic">
-                * Note: Your actual role and permissions are securely verified from your profile.
-              </p>
-            </div>
-
             {/* Login Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input
                 label="Username or Institutional Email"
                 type="text"
-                placeholder="e.g. employee1 or manager"
+                placeholder="Enter your email or username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 leftIcon={<User className="w-4 h-4" />}
@@ -229,38 +170,7 @@ export const LoginPage: React.FC = () => {
               >
                 Sign In to LeadDesk
               </Button>
-
-              <div className="text-center pt-1 text-xs text-slate-300">
-                New counsellor?{' '}
-                <Link to="/register" className="text-pu-gold hover:underline font-bold">
-                  Register your desk account →
-                </Link>
-              </div>
             </form>
-
-            {/* Quick Demo Credentials Panel for Reviewer / Evaluation */}
-            <div className="p-3.5 rounded-xl glass-subtle border border-white/10 space-y-2 text-xs">
-              <div className="flex items-center justify-between text-slate-300 font-semibold">
-                <span>Quick Test Logins:</span>
-                <span className="text-[10px] text-pu-gold">One-click populate</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => fillCredentials('manager')}
-                  className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-[11px] font-medium text-center truncate"
-                >
-                  Manager
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fillCredentials('employee')}
-                  className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-[11px] font-medium text-center truncate"
-                >
-                  Counsellor (Employee 1)
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       </div>

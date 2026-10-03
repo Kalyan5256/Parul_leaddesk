@@ -16,6 +16,12 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 });
 
 async function seedSupabase() {
+  if (process.env.NODE_ENV === 'production' || process.env.ALLOW_DEMO_SEED !== 'true') {
+    console.log('ℹ️ Demo seeding is disabled for production readiness.');
+    console.log('To create an authorized Manager, please run: npm run create-manager');
+    process.exit(0);
+  }
+
   console.log('🌱 Starting Fresh Supabase Database Seeding...');
   console.log('Target URL:', supabaseUrl);
 

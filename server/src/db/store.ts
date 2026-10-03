@@ -42,320 +42,152 @@ class DatabaseStore {
 
   private async initSeedData() {
     if (this.initialized) return;
-
-    // 1. Create Demo Users
-    const passwordSalt = await bcrypt.genSalt(10);
-    const hashManager = await bcrypt.hash('admin123', passwordSalt);
-    const hashLead = await bcrypt.hash('lead123', passwordSalt);
-    const hashEmployee = await bcrypt.hash('1234', passwordSalt);
-
-    const baseUsers: StoredUser[] = [
-      {
-        id: '11111111-0000-0000-0000-000000000001',
-        full_name: 'Dr. Rajesh Parikh (Manager)',
-        username: 'manager',
-        email: 'manager@paruluniversity.ac.in',
-        role: 'manager',
-        team: null,
-        phone: '9825012345',
-        is_active: true,
-        created_at: new Date(Date.now() - 60 * 86400000).toISOString(),
-        password_hash: hashManager,
-      },
-      {
-        id: '22222222-0000-0000-0000-000000000001',
-        full_name: 'Sneha Dave (Team Lead A)',
-        username: 'teamlead1',
-        email: 'teamlead1@paruluniversity.ac.in',
-        role: 'team_lead',
-        team: 'Team A',
-        phone: '9825023456',
-        is_active: true,
-        created_at: new Date(Date.now() - 50 * 86400000).toISOString(),
-        password_hash: hashLead,
-      },
-      {
-        id: '22222222-0000-0000-0000-000000000002',
-        full_name: 'Amit Trivedi (Team Lead B)',
-        username: 'teamlead2',
-        email: 'teamlead2@paruluniversity.ac.in',
-        role: 'team_lead',
-        team: 'Team B',
-        phone: '9825034567',
-        is_active: true,
-        created_at: new Date(Date.now() - 50 * 86400000).toISOString(),
-        password_hash: hashLead,
-      },
-      // Team A employees
-      {
-        id: '33333333-0000-0000-0000-000000000001',
-        full_name: 'Pooja Sharma',
-        username: 'employee1',
-        email: 'pooja.s@paruluniversity.ac.in',
-        role: 'employee',
-        team: 'Team A',
-        phone: '9876500001',
-        is_active: true,
-        created_at: new Date(Date.now() - 40 * 86400000).toISOString(),
-        password_hash: hashEmployee,
-      },
-      {
-        id: '33333333-0000-0000-0000-000000000002',
-        full_name: 'Rahul Verma',
-        username: 'employee2',
-        email: 'rahul.v@paruluniversity.ac.in',
-        role: 'employee',
-        team: 'Team A',
-        phone: '9876500002',
-        is_active: true,
-        created_at: new Date(Date.now() - 40 * 86400000).toISOString(),
-        password_hash: hashEmployee,
-      },
-      {
-        id: '33333333-0000-0000-0000-000000000003',
-        full_name: 'Anjali Desai',
-        username: 'employee3',
-        email: 'anjali.d@paruluniversity.ac.in',
-        role: 'employee',
-        team: 'Team A',
-        phone: '9876500003',
-        is_active: true,
-        created_at: new Date(Date.now() - 40 * 86400000).toISOString(),
-        password_hash: hashEmployee,
-      },
-      // Team B employees
-      {
-        id: '33333333-0000-0000-0000-000000000004',
-        full_name: 'Vikram Joshi',
-        username: 'employee4',
-        email: 'vikram.j@paruluniversity.ac.in',
-        role: 'employee',
-        team: 'Team B',
-        phone: '9876500004',
-        is_active: true,
-        created_at: new Date(Date.now() - 40 * 86400000).toISOString(),
-        password_hash: hashEmployee,
-      },
-      {
-        id: '33333333-0000-0000-0000-000000000005',
-        full_name: 'Kavita Patel',
-        username: 'employee5',
-        email: 'kavita.p@paruluniversity.ac.in',
-        role: 'employee',
-        team: 'Team B',
-        phone: '9876500005',
-        is_active: true,
-        created_at: new Date(Date.now() - 40 * 86400000).toISOString(),
-        password_hash: hashEmployee,
-      },
-      {
-        id: '33333333-0000-0000-0000-000000000006',
-        full_name: 'Siddharth Nair',
-        username: 'employee6',
-        email: 'siddharth.n@paruluniversity.ac.in',
-        role: 'employee',
-        team: 'Team B',
-        phone: '9876500006',
-        is_active: true,
-        created_at: new Date(Date.now() - 40 * 86400000).toISOString(),
-        password_hash: hashEmployee,
-      },
-    ];
-
-    this.users = baseUsers;
-
-    // Clean Slate check: allows manual testing with 0 leads
-    if (process.env.SEED_DEMO_LEADS === 'false') {
-      console.log('✓ Clean Slate Mode: 0 leads, 0 daily reports loaded. Ready for manual entry.');
-      this.initialized = true;
-      return;
-    }
-
-    // 2. Generate ~120 realistic Indian leads across 30 days
-    const courses = [
-      'B.Tech Computer Science & Engg',
-      'B.Tech Artificial Intelligence',
-      'MBA Dual Specialization',
-      'BBA Honours',
-      'B.Des Fashion & Product Design',
-      'MCA Cloud Computing',
-      'B.Pharm Pharmaceutical Tech',
-      'B.Sc Nursing',
-      'BPT Physiotherapy',
-      'LLB Law Honours',
-    ];
-
-    const indianFirstNames = [
-      'Aarav', 'Vivaan', 'Aditya', 'Vihaan', 'Arjun', 'Sai', 'Reyansh', 'Ayaan',
-      'Krishna', 'Ishaan', 'Shaurya', 'Dhruv', 'Kabir', 'Rohan', 'Tanmay', 'Kunal',
-      'Diya', 'Saanvi', 'Ananya', 'Aadhya', 'Pari', 'Isha', 'Navya', 'Riya',
-      'Myra', 'Anika', 'Meera', 'Sneha', 'Tanvi', 'Shreya', 'Prisha', 'Khushi'
-    ];
-
-    const indianLastNames = [
-      'Patel', 'Shah', 'Mehta', 'Desai', 'Sharma', 'Verma', 'Gupta', 'Joshi',
-      'Chauhan', 'Pandey', 'Nair', 'Reddy', 'Iyer', 'Bhatt', 'Mishra', 'Yadav',
-      'Solanki', 'Rathod', 'Panchal', 'Vyas', 'Soni', 'Thakur', 'Gowda', 'Menon'
-    ];
-
-    const statuses: LeadStatus[] = [
-      'New', 'Interested', 'Follow Up', 'Not Interested', 'Admission Done', 'Wrong Number'
-    ];
-
-    const employees = baseUsers.filter((u) => u.role === 'employee');
-    const today = new Date(); // Oct 3 2026
-
-    let leadIndex = 1;
-    // Generate across past 30 days
-    for (let dayOffset = 29; dayOffset >= 0; dayOffset--) {
-      const targetDate = new Date(today);
-      targetDate.setDate(targetDate.getDate() - dayOffset);
-      const dateStr = targetDate.toISOString().split('T')[0];
-
-      // Each day, 2 to 4 employees submitted reports
-      const reportingEmployees = employees.slice(0, (dayOffset % 4) + 2);
-
-      for (const emp of reportingEmployees) {
-        // Today, only some submitted so "Not Submitted Today" panel has entries!
-        if (dayOffset === 0 && (emp.username === 'employee3' || emp.username === 'employee6')) {
-          // Employee 3 & 6 did NOT submit today yet!
-          continue;
-        }
-
-        const leadsForDayCount = 2 + ((dayOffset + emp.username.charCodeAt(8)) % 3); // 2 to 4 leads
-        const empLeads: Lead[] = [];
-
-        for (let k = 0; k < leadsForDayCount; k++) {
-          const fn = indianFirstNames[(leadIndex + k) % indianFirstNames.length];
-          const ln = indianLastNames[(leadIndex * 3 + k) % indianLastNames.length];
-          const status = statuses[(leadIndex + k * 2) % statuses.length];
-          const leadType: LeadType = (leadIndex + k) % 2 === 0 ? 'online' : 'offline';
-          const course = courses[(leadIndex + k) % courses.length];
-
-          // 10-digit Indian mobile starting with 9, 8, 7, or 6
-          const mobilePrefix = ['98', '99', '87', '76', '91', '81', '70'][(leadIndex + k) % 7];
-          const mobile = `${mobilePrefix}${String(10000000 + leadIndex * 47).slice(-8)}`;
-
-          // Follow-up dates:
-          let followUpDate: string | null = null;
-          if (status === 'Follow Up' || status === 'Interested') {
-            const fuDate = new Date(today);
-            if (k % 3 === 0) {
-              // Past overdue
-              fuDate.setDate(fuDate.getDate() - (1 + (k % 4)));
-            } else if (k % 3 === 1) {
-              // Today
-              fuDate.setDate(fuDate.getDate());
-            } else {
-              // Upcoming future
-              fuDate.setDate(fuDate.getDate() + 2 + (k % 5));
-            }
-            followUpDate = fuDate.toISOString().split('T')[0];
-          }
-
-          const leadId = `lead-${String(leadIndex).padStart(5, '0')}`;
-          const leadObj: Lead = {
-            id: leadId,
-            employee_id: emp.id,
-            employee_name: emp.full_name,
-            employee_team: emp.team || '',
-            report_date: dateStr,
-            lead_name: `${fn} ${ln}`,
-            mobile,
-            lead_type: leadType,
-            course,
-            status,
-            follow_up_date: followUpDate,
-            remarks: `Enquired for 2026-27 session. Preferred batch: morning. Seed record #${leadIndex}`,
-            created_at: new Date(targetDate.getTime() + k * 1800000).toISOString(),
-            updated_at: new Date(targetDate.getTime() + k * 1800000).toISOString(),
-          };
-
-          empLeads.push(leadObj);
-          this.leads.push(leadObj);
-
-          // If follow up date set, generate history
-          if (followUpDate) {
-            this.followUps.push({
-              id: `fu-${leadIndex}`,
-              lead_id: leadId,
-              employee_id: emp.id,
-              employee_name: emp.full_name,
-              lead_name: leadObj.lead_name,
-              lead_mobile: leadObj.mobile,
-              follow_up_date: followUpDate,
-              status: leadObj.status,
-              note: `Contacted candidate. Discussed eligibility criteria and scholarship details.`,
-              created_at: new Date(targetDate.getTime() + k * 1800000 + 600000).toISOString(),
-            });
-          }
-
-          leadIndex++;
-        }
-
-        // Daily Report record
-        this.dailyReports.push({
-          id: `rep-${emp.id}-${dateStr}`,
-          employee_id: emp.id,
-          report_date: dateStr,
-          lead_count: empLeads.length,
-          submitted_at: new Date(targetDate.getTime() + 8 * 3600000).toISOString(),
-        });
-      }
-    }
-
-    // 3. Demo notifications
-    this.notifications.push(
-      {
-        id: 'notif-1',
-        user_id: '33333333-0000-0000-0000-000000000001', // Pooja
-        title: 'Follow-up Due Today',
-        body: 'You have 3 candidate follow-ups scheduled for counselling today.',
-        link: '/follow-ups',
-        is_read: false,
-        created_at: new Date().toISOString(),
-      },
-      {
-        id: 'notif-2',
-        user_id: '33333333-0000-0000-0000-000000000001',
-        title: 'Overdue Follow-up Alert',
-        body: 'Lead Aarav Patel has an overdue follow-up from yesterday.',
-        link: '/follow-ups',
-        is_read: false,
-        created_at: new Date(Date.now() - 3600000).toISOString(),
-      },
-      {
-        id: 'notif-3',
-        user_id: '11111111-0000-0000-0000-000000000001', // Manager
-        title: 'Daily Reporting Reminder',
-        body: '2 counsellors have not yet submitted their daily report for today.',
-        link: '/dashboard',
-        is_read: false,
-        created_at: new Date().toISOString(),
-      }
-    );
-
     this.initialized = true;
-    console.log(`✓ Seed data ready: ${this.users.length} users, ${this.leads.length} leads across 30 days, ${this.dailyReports.length} daily reports.`);
+    this.users = [];
+    this.leads = [];
+    this.dailyReports = [];
+    this.followUps = [];
+    this.notifications = [];
+    this.auditLogs = [];
+    this.pushSubscriptions = [];
+    if (isSupabaseConfigured && supabaseAdmin) {
+      await this.syncFromSupabase();
+    }
+    return;
+
+  }
+
+  async syncFromSupabase(): Promise<void> {
+    if (!supabaseAdmin) return;
+    try {
+      const { data: profiles, error: pErr } = await supabaseAdmin.from('profiles').select('*');
+      if (profiles && !pErr) {
+        for (const p of profiles) {
+          const idx = this.users.findIndex((u) => u.id === p.id || u.email === p.email);
+          if (idx === -1) {
+            this.users.push({
+              id: p.id,
+              full_name: p.full_name,
+              username: p.username,
+              email: p.email,
+              role: p.role,
+              team: p.team || null,
+              phone: p.phone || null,
+              is_active: p.is_active ?? true,
+              must_change_password: p.must_change_password ?? false,
+              password_reset_at: p.password_reset_at || null,
+              password_reset_by: p.password_reset_by || null,
+              created_at: p.created_at || new Date().toISOString(),
+              password_hash: '',
+            });
+          } else {
+            this.users[idx] = { ...this.users[idx], ...p };
+          }
+        }
+      }
+
+      const { data: leads, error: lErr } = await supabaseAdmin.from('leads').select('*');
+      if (leads && !lErr) {
+        this.leads = leads;
+      }
+
+      const { data: reports, error: rErr } = await supabaseAdmin.from('daily_reports').select('*');
+      if (reports && !rErr) {
+        this.dailyReports = reports;
+      }
+
+      const { data: followUps, error: fErr } = await supabaseAdmin.from('follow_ups').select('*');
+      if (followUps && !fErr) {
+        this.followUps = followUps;
+      }
+    } catch (err: any) {
+      console.warn('Supabase sync notice:', err.message);
+    }
   }
 
   // --- USER METHODS ---
   async getUserByUsernameOrEmail(identifier: string): Promise<StoredUser | null> {
     const clean = identifier.trim().toLowerCase();
-    const user = this.users.find(
-      (u) => u.username.toLowerCase() === clean || u.email.toLowerCase() === clean
+    let user = this.users.find(
+      (u) => u.username.toLowerCase() === clean || (u.email && u.email.toLowerCase() === clean)
     );
+
+    if (!user && supabaseAdmin) {
+      try {
+        const { data: profile } = await supabaseAdmin
+          .from('profiles')
+          .select('*')
+          .or(`username.ilike.${clean},email.ilike.${clean}`)
+          .maybeSingle();
+
+        if (profile) {
+          const stored: StoredUser = {
+            id: profile.id,
+            full_name: profile.full_name,
+            username: profile.username,
+            email: profile.email,
+            role: profile.role,
+            team: profile.team || null,
+            phone: profile.phone || null,
+            is_active: profile.is_active ?? true,
+            must_change_password: profile.must_change_password ?? false,
+            password_reset_at: profile.password_reset_at || null,
+            password_reset_by: profile.password_reset_by || null,
+            created_at: profile.created_at || new Date().toISOString(),
+            password_hash: '',
+          };
+          this.users.push(stored);
+          return stored;
+        }
+      } catch {
+        // Not found
+      }
+    }
+
     return user || null;
   }
 
   async getUserById(id: string): Promise<UserProfile | null> {
-    const user = this.users.find((u) => u.id === id);
+    let user = this.users.find((u) => u.id === id);
+    if (!user && supabaseAdmin) {
+      try {
+        const { data: profile } = await supabaseAdmin
+          .from('profiles')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+
+        if (profile) {
+          user = {
+            id: profile.id,
+            full_name: profile.full_name,
+            username: profile.username,
+            email: profile.email,
+            role: profile.role,
+            team: profile.team || null,
+            phone: profile.phone || null,
+            is_active: profile.is_active ?? true,
+            must_change_password: profile.must_change_password ?? false,
+            password_reset_at: profile.password_reset_at || null,
+            password_reset_by: profile.password_reset_by || null,
+            created_at: profile.created_at || new Date().toISOString(),
+            password_hash: '',
+          };
+          this.users.push(user);
+        }
+      } catch {
+        // Not found
+      }
+    }
     if (!user) return null;
     const { password_hash, ...profile } = user;
     return profile;
   }
 
   async getAllUsers(): Promise<UserProfile[]> {
+    if (supabaseAdmin) {
+      await this.syncFromSupabase();
+    }
     return this.users.map(({ password_hash, ...profile }) => profile);
   }
 
@@ -367,13 +199,56 @@ class DatabaseStore {
     team?: string | null;
     phone?: string | null;
     password?: string;
-  }): Promise<UserProfile> {
-    const id = `user-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    must_change_password?: boolean;
+  }): Promise<UserProfile & { temporaryPassword?: string }> {
+    const isEmployee = data.role === 'employee';
+    const temporaryPassword =
+      data.password || `Welcome@${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    const mustChange =
+      data.must_change_password !== undefined ? data.must_change_password : isEmployee;
+
     const salt = await bcrypt.genSalt(10);
-    const password_hash = await bcrypt.hash(data.password || '1234', salt);
+    const password_hash = await bcrypt.hash(temporaryPassword, salt);
+
+    let authId = `user-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+    // Sync to Supabase Auth & public.profiles
+    if (supabaseAdmin && data.email) {
+      try {
+        const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
+          email: data.email,
+          password: temporaryPassword,
+          email_confirm: true,
+          user_metadata: {
+            username: data.username,
+            full_name: data.full_name,
+            role: data.role,
+          },
+        });
+
+        if (authData?.user) {
+          authId = authData.user.id;
+          await supabaseAdmin.from('profiles').upsert({
+            id: authId,
+            full_name: data.full_name,
+            username: data.username,
+            email: data.email,
+            role: data.role,
+            team: data.team || null,
+            phone: data.phone || null,
+            is_active: true,
+            must_change_password: mustChange,
+          });
+        } else if (authErr) {
+          console.warn('Supabase Auth user creation note:', authErr.message);
+        }
+      } catch (sbErr: any) {
+        console.warn('Supabase sync on user creation note:', sbErr.message);
+      }
+    }
 
     const newUser: StoredUser = {
-      id,
+      id: authId,
       full_name: data.full_name,
       username: data.username,
       email: data.email,
@@ -381,13 +256,16 @@ class DatabaseStore {
       team: data.team || null,
       phone: data.phone || null,
       is_active: true,
+      must_change_password: mustChange,
       created_at: new Date().toISOString(),
       password_hash,
     };
 
+    this.users = this.users.filter((u) => u.id !== authId && u.email !== data.email);
     this.users.push(newUser);
+
     const { password_hash: _, ...profile } = newUser;
-    return profile;
+    return { ...profile, temporaryPassword };
   }
 
   async updateUser(id: string, updates: Partial<UserProfile>): Promise<UserProfile | null> {

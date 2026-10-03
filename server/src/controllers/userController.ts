@@ -39,20 +39,21 @@ export const createUser = async (
       return;
     }
 
-    const newUser = await dbStore.createUser({
+    const result = await dbStore.createUser({
       full_name,
       username,
       email,
       role,
       team,
       phone,
-      password: password || '1234',
+      password,
     });
 
     res.status(201).json({
       success: true,
-      message: `User '${username}' created successfully`,
-      data: newUser,
+      message: `User '${username}' created successfully. Temporary credentials provisioned.`,
+      data: result,
+      temporaryPassword: result.temporaryPassword,
     });
   } catch (error: any) {
     res.status(400).json({
