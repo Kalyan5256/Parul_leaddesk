@@ -61,6 +61,7 @@ export const singleLeadSchema = z.object({
     errorMap: () => ({ message: 'Please select a valid counselling status' }),
   }),
   follow_up_date: z.string().nullable().optional(),
+  follow_up_time: z.string().nullable().optional(),
   remarks: z.string().nullable().optional(),
 });
 
@@ -109,6 +110,7 @@ export const updateLeadSchema = z.object({
       ])
       .optional(),
     follow_up_date: z.string().nullable().optional(),
+    follow_up_time: z.string().nullable().optional(),
     remarks: z.string().nullable().optional(),
   }),
 });

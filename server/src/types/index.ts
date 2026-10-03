@@ -19,6 +19,9 @@ export interface UserProfile {
   team: string | null;
   phone: string | null;
   is_active: boolean;
+  must_change_password?: boolean;
+  password_reset_at?: string | null;
+  password_reset_by?: string | null;
   created_at: string;
 }
 
@@ -34,6 +37,8 @@ export interface Lead {
   course: string;
   status: LeadStatus;
   follow_up_date: string | null;
+  follow_up_time?: string | null;
+  is_notified?: boolean;
   remarks: string | null;
   created_at: string;
   updated_at: string;
@@ -55,6 +60,8 @@ export interface FollowUp {
   lead_name?: string;
   lead_mobile?: string;
   follow_up_date: string;
+  follow_up_time?: string | null;
+  is_notified?: boolean;
   status: string;
   note: string | null;
   created_at: string;
@@ -65,6 +72,7 @@ export interface AppNotification {
   user_id: string;
   title: string;
   body: string;
+  type?: string;
   link: string | null;
   is_read: boolean;
   created_at: string;
@@ -75,4 +83,27 @@ export interface AuthUser {
   email: string;
   role: UserRole;
   username: string;
+  must_change_password?: boolean;
 }
+
+export interface AuditLog {
+  id: string;
+  target_user_id: string;
+  target_user_name?: string;
+  performed_by: string;
+  performed_by_name?: string;
+  action: string;
+  metadata?: Record<string, any>;
+  created_at: string;
+}
+
+export interface PushSubscriptionRecord {
+  id: string;
+  user_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  user_agent?: string;
+  created_at: string;
+}
+

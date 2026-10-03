@@ -124,3 +124,90 @@ export const updateUserStatus = async (
     });
   }
 };
+
+export const resetEmployeePassword = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const managerId = req.profile!.id;
+
+    const targetUser = await dbStore.getUserById(id);
+    if (!targetUser) {
+      res.status(404).json({
+        success: false,
+        message: 'Target employee not found',
+        code: 'USER_NOT_FOUND',
+      });
+      return;
+    }
+
+    if (targetUser.role === 'admin' && req.profile!.role !== 'admin') {
+      res.status(403).json({
+        success: false,
+        message: 'Cannot reset credentials of an administrator',
+        code: 'FORBIDDEN',
+      });
+      return;
+    }
+
+    const result = await dbStore.resetEmployeePassword(id, managerId);
+
+    res.json({
+      success: true,
+      message: `Temporary password generated for ${targetUser.full_name}. Provide this to the employee.`,
+      temporaryPassword: result.temporaryPassword,
+      user: result.targetUser,
+    });
+  } catch (error: any) {
+    console.error('resetEmployeePassword error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to reset password',
+      code: 'RESET_PASSWORD_FAILED',
+    });
+  }
+};
+
+export const changeOwnPassword = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.profile!.id;
+    const newPassword = req.body.newPassword || req.body.new_password;
+
+    if (!newPassword || newPassword.length < 6) {
+      res.status(400).json({
+        success: false,
+        message: 'Password must be at least 6 characters long',
+        code: 'INVALID_PASSWORD',
+      });
+      return;
+    }
+
+    const success = await dbStore.changeOwnPassword(userId, newPassword);
+    if (!success) {
+      res.status(404).json({
+        success: false,
+        message: 'User account not found',
+        code: 'USER_NOT_FOUND',
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: 'Password updated successfully. You now have full access to LeadDesk.',
+    });
+  } catch (error: any) {
+    console.error('changeOwnPassword error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to update password',
+      code: 'CHANGE_PASSWORD_FAILED',
+    });
+  }
+};
+

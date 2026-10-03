@@ -80,6 +80,29 @@ export const authenticate = async (
     };
     req.profile = profile;
 
+    // Enforce forced password change requirement
+    const allowedWhenMustChange = [
+      '/api/users/me/change-password',
+      '/api/auth/change-password',
+      '/api/me',
+      '/api/auth/me',
+      '/me/change-password',
+      '/change-password',
+      '/me',
+    ];
+    const requestedPath = req.originalUrl ? req.originalUrl.split('?')[0] : req.path;
+    const isAllowedPath = allowedWhenMustChange.some((allowed) => requestedPath.endsWith(allowed));
+
+    if (profile.must_change_password && !isAllowedPath) {
+      res.status(403).json({
+        success: false,
+        message: 'Temporary password active. You must change your password before continuing.',
+        code: 'MUST_CHANGE_PASSWORD',
+        must_change_password: true,
+      });
+      return;
+    }
+
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);

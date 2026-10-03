@@ -1,4 +1,15 @@
-import { UserProfile, Lead, DailyReport, FollowUp, AppNotification, LeadStatus, LeadType, UserRole } from '../types/index.js';
+import {
+  UserProfile,
+  Lead,
+  DailyReport,
+  FollowUp,
+  AppNotification,
+  LeadStatus,
+  LeadType,
+  UserRole,
+  AuditLog,
+  PushSubscriptionRecord,
+} from '../types/index.js';
 import bcrypt from 'bcryptjs';
 import { supabaseAdmin, isSupabaseConfigured } from '../lib/supabase.js';
 
@@ -6,13 +17,24 @@ interface StoredUser extends UserProfile {
   password_hash: string;
 }
 
+interface PasswordResetToken {
+  token: string;
+  userId: string;
+  email: string;
+  expiresAt: number;
+}
+
 class DatabaseStore {
   private users: StoredUser[] = [];
+  private resetTokens: PasswordResetToken[] = [];
   private leads: Lead[] = [];
   private dailyReports: DailyReport[] = [];
   private followUps: FollowUp[] = [];
   private notifications: AppNotification[] = [];
+  private auditLogs: AuditLog[] = [];
+  private pushSubscriptions: PushSubscriptionRecord[] = [];
   private initialized = false;
+
 
   constructor() {
     this.initSeedData();
@@ -141,6 +163,13 @@ class DatabaseStore {
     ];
 
     this.users = baseUsers;
+
+    // Clean Slate check: allows manual testing with 0 leads
+    if (process.env.SEED_DEMO_LEADS === 'false') {
+      console.log('✓ Clean Slate Mode: 0 leads, 0 daily reports loaded. Ready for manual entry.');
+      this.initialized = true;
+      return;
+    }
 
     // 2. Generate ~120 realistic Indian leads across 30 days
     const courses = [
@@ -374,8 +403,356 @@ class DatabaseStore {
     return this.updateUser(id, { is_active: isActive });
   }
 
+  async getStoredUserById(id: string): Promise<StoredUser | null> {
+    const user = this.users.find((u) => u.id === id);
+    return user || null;
+  }
+
+  async createPasswordResetToken(userId: string): Promise<{ token: string; email: string }> {
+    const user = this.users.find((u) => u.id === userId);
+    if (!user) throw new Error('User not found');
+
+    this.resetTokens = this.resetTokens.filter((t) => t.userId !== userId);
+
+    const token = `rst_${Math.random().toString(36).substring(2, 10)}_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}`;
+    const expiresAt = Date.now() + 60 * 60 * 1000; // 1 hour validity
+
+    this.resetTokens.push({
+      token,
+      userId: user.id,
+      email: user.email,
+      expiresAt,
+    });
+
+    return { token, email: user.email };
+  }
+
+  async verifyPasswordResetToken(token: string): Promise<StoredUser | null> {
+    const record = this.resetTokens.find((t) => t.token === token);
+    if (!record) return null;
+
+    if (Date.now() > record.expiresAt) {
+      this.resetTokens = this.resetTokens.filter((t) => t.token !== token);
+      return null;
+    }
+
+    const user = this.users.find((u) => u.id === record.userId);
+    return user || null;
+  }
+
+  async updateUserPassword(userId: string, newPasswordPlain: string): Promise<boolean> {
+    const index = this.users.findIndex((u) => u.id === userId);
+    if (index === -1) return false;
+
+    const salt = await bcrypt.genSalt(10);
+    const password_hash = await bcrypt.hash(newPasswordPlain, salt);
+    this.users[index].password_hash = password_hash;
+
+    // Invalidate reset tokens for this user
+    this.resetTokens = this.resetTokens.filter((t) => t.userId !== userId);
+
+    // If Supabase is configured, also update Supabase Auth user password
+    if (supabaseAdmin && this.users[index].email) {
+      try {
+        const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
+        const sbUser = listData?.users.find(
+          (u) => u.email === this.users[index].email || u.id === userId
+        );
+        if (sbUser) {
+          await supabaseAdmin.auth.admin.updateUserById(sbUser.id, {
+            password: newPasswordPlain,
+          });
+        }
+      } catch (sbErr) {
+        console.warn('Optional Supabase background sync on password update:', sbErr);
+      }
+    }
+
+    return true;
+  }
+
+  // --- MANAGER PASSWORD RESET ---
+  async resetEmployeePassword(
+    targetUserId: string,
+    managerId: string
+  ): Promise<{ temporaryPassword: string; targetUser: UserProfile }> {
+    const userIndex = this.users.findIndex((u) => u.id === targetUserId);
+    if (userIndex === -1) {
+      throw new Error('Employee account not found');
+    }
+
+    const manager = this.users.find((u) => u.id === managerId);
+
+    // Generate secure temporary password: Welcome@ + 6 alphanumeric characters
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    let randomPart = '';
+    for (let i = 0; i < 6; i++) {
+      randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    const temporaryPassword = `Welcome@${randomPart}`;
+
+    const salt = await bcrypt.genSalt(10);
+    const password_hash = await bcrypt.hash(temporaryPassword, salt);
+    const now = new Date().toISOString();
+
+    this.users[userIndex].password_hash = password_hash;
+    this.users[userIndex].must_change_password = true;
+    this.users[userIndex].password_reset_at = now;
+    this.users[userIndex].password_reset_by = managerId;
+
+    // Invalidate any existing reset tokens
+    this.resetTokens = this.resetTokens.filter((t) => t.userId !== targetUserId);
+
+    // Sync to Supabase Auth if configured
+    if (supabaseAdmin && this.users[userIndex].email) {
+      try {
+        const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
+        const sbUser = listData?.users.find(
+          (u) => u.email === this.users[userIndex].email || u.id === targetUserId
+        );
+        if (sbUser) {
+          await supabaseAdmin.auth.admin.updateUserById(sbUser.id, {
+            password: temporaryPassword,
+          });
+          await supabaseAdmin
+            .from('profiles')
+            .update({
+              must_change_password: true,
+              password_reset_at: now,
+              password_reset_by: managerId,
+            })
+            .eq('id', sbUser.id);
+        }
+      } catch (sbErr) {
+        console.warn('Supabase sync on manager password reset:', sbErr);
+      }
+    }
+
+    // Add Audit Log
+    await this.addAuditLog({
+      target_user_id: targetUserId,
+      target_user_name: this.users[userIndex].full_name,
+      performed_by: managerId,
+      performed_by_name: manager?.full_name || 'Manager',
+      action: 'MANAGER_PASSWORD_RESET',
+      metadata: {
+        role: this.users[userIndex].role,
+        team: this.users[userIndex].team,
+      },
+    });
+
+    const { password_hash: _, ...profile } = this.users[userIndex];
+    return { temporaryPassword, targetUser: profile };
+  }
+
+  async changeOwnPassword(userId: string, newPasswordPlain: string): Promise<boolean> {
+    const userIndex = this.users.findIndex((u) => u.id === userId);
+    if (userIndex === -1) return false;
+
+    const salt = await bcrypt.genSalt(10);
+    const password_hash = await bcrypt.hash(newPasswordPlain, salt);
+
+    this.users[userIndex].password_hash = password_hash;
+    this.users[userIndex].must_change_password = false;
+
+    this.resetTokens = this.resetTokens.filter((t) => t.userId !== userId);
+
+    if (supabaseAdmin && this.users[userIndex].email) {
+      try {
+        const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
+        const sbUser = listData?.users.find(
+          (u) => u.email === this.users[userIndex].email || u.id === userId
+        );
+        if (sbUser) {
+          await supabaseAdmin.auth.admin.updateUserById(sbUser.id, {
+            password: newPasswordPlain,
+          });
+          await supabaseAdmin
+            .from('profiles')
+            .update({
+              must_change_password: false,
+            })
+            .eq('id', sbUser.id);
+        }
+      } catch (sbErr) {
+        console.warn('Supabase sync on own password change:', sbErr);
+      }
+    }
+
+    await this.addAuditLog({
+      target_user_id: userId,
+      target_user_name: this.users[userIndex].full_name,
+      performed_by: userId,
+      performed_by_name: this.users[userIndex].full_name,
+      action: 'PASSWORD_CHANGED',
+      metadata: { forced_reset_completed: true },
+    });
+
+    return true;
+  }
+
+  // --- AUDIT LOGS ---
+  async addAuditLog(data: {
+    target_user_id: string;
+    target_user_name?: string;
+    performed_by: string;
+    performed_by_name?: string;
+    action: string;
+    metadata?: Record<string, any>;
+  }): Promise<AuditLog> {
+    const entry: AuditLog = {
+      id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      target_user_id: data.target_user_id,
+      target_user_name: data.target_user_name,
+      performed_by: data.performed_by,
+      performed_by_name: data.performed_by_name,
+      action: data.action,
+      metadata: data.metadata || {},
+      created_at: new Date().toISOString(),
+    };
+    this.auditLogs.unshift(entry);
+
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin.from('audit_logs').insert(entry);
+      } catch (err) {
+        // Ignored if table not created yet in live db
+      }
+    }
+    return entry;
+  }
+
+  async getAuditLogs(limit: number = 50): Promise<AuditLog[]> {
+    return this.auditLogs.slice(0, limit);
+  }
+
+  // --- PUSH SUBSCRIPTIONS ---
+  async savePushSubscription(
+    arg1: string | { user_id: string; endpoint: string; p256dh: string; auth: string; user_agent?: string },
+    endpoint?: string,
+    p256dh?: string,
+    auth?: string,
+    user_agent?: string
+  ): Promise<PushSubscriptionRecord> {
+    let userId: string;
+    let ep: string;
+    let pKey: string;
+    let authKey: string;
+    let agent: string | undefined;
+
+    if (typeof arg1 === 'object') {
+      userId = arg1.user_id;
+      ep = arg1.endpoint;
+      pKey = arg1.p256dh;
+      authKey = arg1.auth;
+      agent = arg1.user_agent;
+    } else {
+      userId = arg1;
+      ep = endpoint!;
+      pKey = p256dh!;
+      authKey = auth!;
+      agent = user_agent;
+    }
+
+    const existingIndex = this.pushSubscriptions.findIndex((s) => s.endpoint === ep);
+    const now = new Date().toISOString();
+    const record: PushSubscriptionRecord = {
+      id: `push-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      user_id: userId,
+      endpoint: ep,
+      p256dh: pKey,
+      auth: authKey,
+      user_agent: agent,
+      created_at: now,
+    };
+
+    if (existingIndex !== -1) {
+      this.pushSubscriptions[existingIndex] = record;
+    } else {
+      this.pushSubscriptions.push(record);
+    }
+
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin.from('push_subscriptions').upsert(record, { onConflict: 'endpoint' });
+      } catch (err) {
+        // Ignored if table not created yet
+      }
+    }
+
+    return record;
+  }
+
+  async getPushSubscriptionsForUser(userId: string): Promise<PushSubscriptionRecord[]> {
+    return this.pushSubscriptions.filter((s) => s.user_id === userId);
+  }
+
+  async removePushSubscription(endpointOrId: string): Promise<boolean> {
+    const initialLen = this.pushSubscriptions.length;
+    this.pushSubscriptions = this.pushSubscriptions.filter(
+      (s) => s.endpoint !== endpointOrId && s.id !== endpointOrId
+    );
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin.from('push_subscriptions').delete().or(`endpoint.eq.${endpointOrId},id.eq.${endpointOrId}`);
+      } catch (err) {}
+    }
+    return this.pushSubscriptions.length < initialLen;
+  }
+
+  // --- DUE FOLLOW-UPS (IST) ---
+  async getDueFollowUpsIST(
+    currentDateIST?: string,
+    currentTimeIST?: string
+  ): Promise<Array<{ followUp: FollowUp; lead: Lead }>> {
+    const now = new Date();
+    const todayIST =
+      currentDateIST ||
+      new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now);
+    const nowIST =
+      currentTimeIST ||
+      new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }).format(now);
+
+    const dueList: Array<{ followUp: FollowUp; lead: Lead }> = [];
+
+    for (const f of this.followUps) {
+      if (f.status === 'Admission Done' || f.status === 'Not Interested') continue;
+      if (f.is_notified) continue;
+      if (f.follow_up_date !== todayIST) continue;
+      if (!f.follow_up_time) continue;
+      if (f.follow_up_time <= nowIST) {
+        const lead = this.leads.find((l) => l.id === f.lead_id);
+        if (lead) {
+          dueList.push({ followUp: f, lead });
+        }
+      }
+    }
+
+    return dueList;
+  }
+
+  async markFollowUpNotified(id: string): Promise<void> {
+    const fu = this.followUps.find((f) => f.id === id);
+    if (fu) {
+      fu.is_notified = true;
+    }
+    if (fu?.lead_id) {
+      const lead = this.leads.find((l) => l.id === fu.lead_id);
+      if (lead) {
+        lead.is_notified = true;
+      }
+    }
+  }
+
   // --- LEADS METHODS ---
   async getLeads(filters: {
+
     employee_id?: string;
     team?: string;
     status?: string;
@@ -477,6 +854,7 @@ class DatabaseStore {
       course: string;
       status: LeadStatus;
       follow_up_date?: string | null;
+      follow_up_time?: string | null;
       remarks?: string | null;
     }>
   ): Promise<{ insertedCount: number; leads: Lead[]; dailyReport: DailyReport }> {
@@ -501,6 +879,8 @@ class DatabaseStore {
         course: item.course,
         status: item.status,
         follow_up_date: item.follow_up_date || null,
+        follow_up_time: item.follow_up_time || null,
+        is_notified: false,
         remarks: item.remarks || null,
         created_at: createdTime,
         updated_at: createdTime,
@@ -519,6 +899,8 @@ class DatabaseStore {
           lead_name: item.lead_name,
           lead_mobile: item.mobile,
           follow_up_date: item.follow_up_date,
+          follow_up_time: item.follow_up_time || null,
+          is_notified: false,
           status: item.status,
           note: item.remarks || 'Initial follow up scheduled during daily report submission',
           created_at: createdTime,
@@ -670,6 +1052,7 @@ class DatabaseStore {
     lead_id: string;
     employee_id: string;
     follow_up_date: string;
+    follow_up_time?: string | null;
     status: string;
     note?: string | null;
   }): Promise<FollowUp> {
@@ -687,6 +1070,8 @@ class DatabaseStore {
       lead_name: lead.lead_name,
       lead_mobile: lead.mobile,
       follow_up_date: data.follow_up_date,
+      follow_up_time: data.follow_up_time || null,
+      is_notified: false,
       status: data.status,
       note: data.note || null,
       created_at: now,
@@ -694,8 +1079,10 @@ class DatabaseStore {
 
     this.followUps.unshift(fu);
 
-    // Update lead follow_up_date and status
+    // Update lead follow_up_date, follow_up_time, and status
     lead.follow_up_date = data.follow_up_date;
+    lead.follow_up_time = data.follow_up_time || null;
+    lead.is_notified = false;
     if (data.status) {
       lead.status = data.status as LeadStatus;
     }
@@ -715,7 +1102,12 @@ class DatabaseStore {
     // Also sync back to lead
     const lead = this.leads.find((l) => l.id === fu.lead_id);
     if (lead) {
-      if (updates.follow_up_date) lead.follow_up_date = updates.follow_up_date;
+      if (updates.follow_up_date !== undefined) lead.follow_up_date = updates.follow_up_date;
+      if (updates.follow_up_time !== undefined) {
+        lead.follow_up_time = updates.follow_up_time;
+        lead.is_notified = false;
+        fu.is_notified = false;
+      }
       if (updates.status) lead.status = updates.status as LeadStatus;
       lead.updated_at = new Date().toISOString();
     }
@@ -950,6 +1342,37 @@ class DatabaseStore {
       }
     }
     return count;
+  }
+
+  async addNotification(params: {
+    user_id: string;
+    title: string;
+    body: string;
+    type?: 'submission' | 'lead_assigned' | 'target_alert' | 'followup_due' | 'system';
+    link?: string;
+  }): Promise<AppNotification> {
+    const notif: AppNotification = {
+      id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      user_id: params.user_id,
+      title: params.title,
+      body: params.body,
+      type: params.type || 'system',
+      link: params.link || null,
+      is_read: false,
+      created_at: new Date().toISOString(),
+    };
+
+    this.notifications.unshift(notif);
+
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin.from('notifications').insert(notif);
+      } catch (err) {
+        // Table might not exist yet or mock fallback
+      }
+    }
+
+    return notif;
   }
 }
 

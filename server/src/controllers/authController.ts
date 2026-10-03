@@ -48,6 +48,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         role: user.role,
         username: user.username,
         email: user.email,
+        must_change_password: Boolean(user.must_change_password),
       },
       JWT_SECRET,
       { expiresIn: '7d' }
@@ -200,3 +201,138 @@ export const syncProfile = async (req: AuthenticatedRequest, res: Response): Pro
     });
   }
 };
+
+export const forgotPassword = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { identifier } = req.body;
+    const user = await dbStore.getUserByUsernameOrEmail(identifier);
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: `No active account was found associated with "${identifier}". Please verify your university email or username.`,
+        code: 'USER_NOT_FOUND',
+      });
+      return;
+    }
+
+    if (!user.is_active) {
+      res.status(403).json({
+        success: false,
+        message: 'This account has been deactivated. Please contact the counselling cell administrator.',
+        code: 'ACCOUNT_DEACTIVATED',
+      });
+      return;
+    }
+
+    const { token } = await dbStore.createPasswordResetToken(user.id);
+    const resetUrl = `/reset-password?token=${token}`;
+
+    console.log(`\n🔑 [AUTH] Password reset requested for ${user.email} (${user.username})`);
+    console.log(`   Reset URL: http://localhost:5173${resetUrl}`);
+    console.log(`   Reset Token: ${token}\n`);
+
+    res.json({
+      success: true,
+      message: `Password reset instructions and security token generated for ${user.email}.`,
+      token,
+      resetUrl,
+      email: user.email,
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process password reset request',
+      code: 'FORGOT_PASSWORD_ERROR',
+    });
+  }
+};
+
+export const resetPassword = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token, password } = req.body;
+
+    const user = await dbStore.verifyPasswordResetToken(token);
+    if (!user) {
+      res.status(400).json({
+        success: false,
+        message: 'Invalid or expired password reset token. Please request a new reset link.',
+        code: 'INVALID_OR_EXPIRED_TOKEN',
+      });
+      return;
+    }
+
+    const updated = await dbStore.updateUserPassword(user.id, password);
+    if (!updated) {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to update password',
+        code: 'PASSWORD_UPDATE_FAILED',
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: 'Your password has been successfully reset! You can now log in with your new credentials.',
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reset password',
+      code: 'RESET_PASSWORD_ERROR',
+    });
+  }
+};
+
+export const changePassword = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.profile) {
+      res.status(401).json({
+        success: false,
+        message: 'Not authenticated',
+        code: 'UNAUTHENTICATED',
+      });
+      return;
+    }
+
+    const { currentPassword, newPassword } = req.body;
+    const storedUser = await dbStore.getStoredUserById(req.profile.id);
+
+    if (!storedUser) {
+      res.status(404).json({
+        success: false,
+        message: 'User profile not found',
+        code: 'USER_NOT_FOUND',
+      });
+      return;
+    }
+
+    const isValid = await bcrypt.compare(currentPassword, storedUser.password_hash);
+    if (!isValid) {
+      res.status(400).json({
+        success: false,
+        message: 'Current password is incorrect',
+        code: 'INVALID_CURRENT_PASSWORD',
+      });
+      return;
+    }
+
+    await dbStore.updateUserPassword(storedUser.id, newPassword);
+
+    res.json({
+      success: true,
+      message: 'Password updated successfully.',
+    });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to change password',
+      code: 'CHANGE_PASSWORD_ERROR',
+    });
+  }
+};
+

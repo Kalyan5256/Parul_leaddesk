@@ -1,0 +1,18 @@
+{
+  "short_name": "Parul LeadDesk",
+  "name": "Parul LeadDesk — University Admission Lead Management",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0a0f1d",
+  "theme_color": "#0B2A5B",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "scope": "/"
+}

@@ -95,6 +95,8 @@ app.use((_req, res) => {
 // Global Error Handler
 app.use(errorHandler);
 
+import { startFollowUpScheduler } from './services/followupScheduler.js';
+
 // Start Server
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
@@ -103,6 +105,9 @@ if (process.env.NODE_ENV !== 'test') {
     console.log(`📍 Endpoint: http://localhost:${PORT}/api`);
     console.log(`🌐 Client Origin: ${CLIENT_ORIGIN}`);
     console.log(`==================================================\n`);
+
+    // Start background push notification scheduler (runs every minute in IST)
+    startFollowUpScheduler();
   });
 }
 

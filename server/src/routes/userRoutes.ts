@@ -4,6 +4,8 @@ import {
   createUser,
   updateUser,
   updateUserStatus,
+  resetEmployeePassword,
+  changeOwnPassword,
 } from '../controllers/userController.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireRole } from '../middleware/roles.js';
@@ -18,6 +20,9 @@ const router = Router();
 
 router.use(authenticate);
 
+// Employee changes own password (e.g. after forced temporary password reset)
+router.post('/me/change-password', changeOwnPassword);
+
 // Team lead, manager, and admin can view team members
 router.get('/', requireRole('manager', 'team_lead', 'admin'), getAllUsers);
 
@@ -27,6 +32,13 @@ router.post(
   requireRole('manager', 'admin'),
   validate(createUserSchema),
   createUser
+);
+
+// Manager resets an employee's password
+router.post(
+  '/:id/reset-password',
+  requireRole('manager', 'admin'),
+  resetEmployeePassword
 );
 
 router.patch(
@@ -44,3 +56,4 @@ router.patch(
 );
 
 export default router;
+

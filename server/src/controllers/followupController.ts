@@ -48,7 +48,7 @@ export const addFollowUp = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { lead_id, follow_up_date, status, note } = req.body;
+    const { lead_id, follow_up_date, follow_up_time, status, note } = req.body;
     const employee_id = req.profile!.id;
 
     if (!lead_id || !follow_up_date || !status) {
@@ -64,6 +64,7 @@ export const addFollowUp = async (
       lead_id,
       employee_id,
       follow_up_date,
+      follow_up_time,
       status,
       note,
     });

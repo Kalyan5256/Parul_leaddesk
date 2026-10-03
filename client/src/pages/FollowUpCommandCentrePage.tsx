@@ -78,6 +78,7 @@ export const FollowUpCommandCentrePage: React.FC = () => {
     currentStatus: string;
   } | null>(null);
   const [newDate, setNewDate] = useState('');
+  const [newTime, setNewTime] = useState('10:00');
   const [newStatus, setNewStatus] = useState('Follow Up');
   const [newNote, setNewNote] = useState('');
 
@@ -124,6 +125,7 @@ export const FollowUpCommandCentrePage: React.FC = () => {
     mutationFn: () =>
       api.patch(`/follow-ups/${rescheduleItem?.id}`, {
         follow_up_date: newDate,
+        follow_up_time: newTime || null,
         status: newStatus,
         note: newNote,
       }),
@@ -148,6 +150,7 @@ export const FollowUpCommandCentrePage: React.FC = () => {
       currentStatus: fu.status,
     });
     setNewDate(fu.follow_up_date);
+    setNewTime(fu.follow_up_time ? fu.follow_up_time.slice(0, 5) : '10:00');
     setNewStatus(fu.status);
     setNewNote('');
   };
@@ -241,7 +244,14 @@ export const FollowUpCommandCentrePage: React.FC = () => {
 
                       <div className="text-[11px] text-slate-300 flex items-center justify-between">
                         <span className="font-mono text-slate-400">{fu.lead_mobile}</span>
-                        <span className="text-pu-gold font-semibold">{fu.follow_up_date}</span>
+                        <span className="text-pu-gold font-semibold flex items-center gap-1">
+                          <span>{fu.follow_up_date}</span>
+                          {fu.follow_up_time && (
+                            <span className="text-[10px] px-1 py-0.2 rounded bg-pu-gold/20 font-mono">
+                              {fu.follow_up_time.slice(0, 5)} IST
+                            </span>
+                          )}
+                        </span>
                       </div>
 
                       <div className="text-[10px] text-slate-400 truncate">
@@ -304,13 +314,22 @@ export const FollowUpCommandCentrePage: React.FC = () => {
           size="sm"
         >
           <div className="space-y-4">
-            <Input
-              label="New Follow-up Date"
-              type="date"
-              value={newDate}
-              onChange={(e) => setNewDate(e.target.value)}
-              required
-            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                label="New Follow-up Date"
+                type="date"
+                value={newDate}
+                onChange={(e) => setNewDate(e.target.value)}
+                required
+              />
+
+              <Input
+                label="Follow-up Time (IST)"
+                type="time"
+                value={newTime}
+                onChange={(e) => setNewTime(e.target.value)}
+              />
+            </div>
 
             <Select
               label="Update Status"

@@ -13,10 +13,12 @@ import {
   Users,
   UserPlus,
   Shield,
+  ShieldAlert,
   Edit2,
   CheckCircle,
   XCircle,
   KeyRound,
+  Copy,
   RotateCcw,
 } from 'lucide-react';
 
@@ -26,12 +28,18 @@ export const TeamManagementPage: React.FC = () => {
 
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [resetTargetUser, setResetTargetUser] = useState<any | null>(null);
+  const [temporaryPasswordData, setTemporaryPasswordData] = useState<{
+    password: string;
+    user: any;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // New User Form State (Section 40)
   const [newFullName, setNewFullName] = useState('');
   const [newUsername, setNewUsername] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('1234');
+  const [newPassword, setNewPassword] = useState('Welcome@123');
   const [newRole, setNewRole] = useState<'employee' | 'team_lead' | 'manager'>('employee');
   const [newTeam, setNewTeam] = useState('Team A');
   const [newPhone, setNewPhone] = useState('');
@@ -116,6 +124,24 @@ export const TeamManagementPage: React.FC = () => {
     },
   });
 
+  // Reset Employee Password Mutation
+  const resetPasswordMutation = useMutation({
+    mutationFn: (userId: string) => api.post(`/users/${userId}/reset-password`),
+    onSuccess: (res: any) => {
+      success(`Temporary password generated for ${resetTargetUser?.full_name}`);
+      setTemporaryPasswordData({
+        password: res.temporaryPassword,
+        user: res.user || resetTargetUser,
+      });
+      setResetTargetUser(null);
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ['team-management-users'] });
+    },
+    onError: (err: any) => {
+      showError(err.message || 'Failed to reset password');
+    },
+  });
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -188,16 +214,22 @@ export const TeamManagementPage: React.FC = () => {
                       {u.team || 'Unassigned'}
                     </td>
                     <td className="px-4 py-3.5 whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          u.is_active
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
-                            : 'bg-rose-500/20 text-rose-300 border border-rose-400/30'
-                        }`}
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                        <span>{u.is_active ? 'Active' : 'Inactive'}</span>
-                      </span>
+                      {u.must_change_password ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-400/30 animate-pulse">
+                          <span>🔑 Reset Pending</span>
+                        </span>
+                      ) : (
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            u.is_active
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
+                              : 'bg-rose-500/20 text-rose-300 border border-rose-400/30'
+                          }`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                          <span>{u.is_active ? 'Active' : 'Inactive'}</span>
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3.5 whitespace-nowrap font-bold text-white">
                       {stat?.totalLeads ?? '—'}
@@ -210,6 +242,15 @@ export const TeamManagementPage: React.FC = () => {
                     </td>
                     <td className="px-4 py-3.5 whitespace-nowrap text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {/* Reset Password Button */}
+                        <button
+                          onClick={() => setResetTargetUser(u)}
+                          className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 transition-colors"
+                          title="Reset employee password"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                        </button>
+
                         <button
                           onClick={() => setEditingUser(u)}
                           className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white"
@@ -409,6 +450,126 @@ export const TeamManagementPage: React.FC = () => {
           </div>
         </GlassModal>
       )}
+
+      {/* Reset Password Confirmation Modal */}
+      <GlassModal
+        isOpen={Boolean(resetTargetUser)}
+        onClose={() => setResetTargetUser(null)}
+        title="Reset Employee Password"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 space-y-1.5">
+            <div className="font-bold flex items-center gap-1.5 text-amber-300">
+              <ShieldAlert className="w-4 h-4 shrink-0" />
+              <span>Mandatory Security Notice</span>
+            </div>
+            <p>
+              Are you sure you want to reset credentials for{' '}
+              <strong className="text-white font-semibold">{resetTargetUser?.full_name}</strong> ({resetTargetUser?.username})?
+            </p>
+            <p className="text-[11px] text-amber-300/80">
+              A temporary password will be generated. The employee will be forced to create a permanent password upon their next login.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setResetTargetUser(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              isLoading={resetPasswordMutation.isPending}
+              onClick={() => resetPasswordMutation.mutate(resetTargetUser.id)}
+              className="bg-amber-500 hover:bg-amber-600 text-pu-navy font-bold shadow-lg shadow-amber-500/20"
+            >
+              Generate Temporary Password
+            </Button>
+          </div>
+        </div>
+      </GlassModal>
+
+      {/* One-Time Temporary Password Display Modal */}
+      <GlassModal
+        isOpen={Boolean(temporaryPasswordData)}
+        onClose={() => {
+          setTemporaryPasswordData(null);
+          setCopied(false);
+        }}
+        title="Temporary Password Generated"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-200 text-xs space-y-1">
+            <div className="font-bold flex items-center gap-1.5 text-emerald-300">
+              <CheckCircle className="w-4 h-4 text-emerald-400" />
+              <span>Password Successfully Reset</span>
+            </div>
+            <p>
+              A one-time temporary password was assigned to{' '}
+              <strong className="text-white font-semibold">{temporaryPasswordData?.user?.full_name}</strong>.
+            </p>
+          </div>
+
+          <div>
+            <label className="text-xs text-slate-300 font-semibold block mb-1">
+              Temporary Password (Share securely with counsellor):
+            </label>
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-black/40 border border-white/20">
+              <span className="font-mono text-base sm:text-lg font-bold text-pu-gold tracking-wider flex-1 select-all break-all">
+                {temporaryPasswordData?.password}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="primary"
+                onClick={() => {
+                  if (temporaryPasswordData?.password) {
+                    navigator.clipboard.writeText(temporaryPasswordData.password);
+                    setCopied(true);
+                    success('Temporary password copied to clipboard');
+                    setTimeout(() => setCopied(false), 2000);
+                  }
+                }}
+                className="shrink-0 flex items-center gap-1.5 font-bold"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>{copied ? 'Copied!' : 'Copy'}</span>
+              </Button>
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-[11px] text-slate-300 space-y-1">
+            <p className="font-semibold text-pu-gold">Security Protocols:</p>
+            <p>• This password is displayed only once and will never be shown again.</p>
+            <p>• The counsellor cannot access any leads until they set their own permanent password.</p>
+            <p>• Managers can never view the permanent password set by the employee.</p>
+          </div>
+
+          <div className="flex justify-end pt-2 border-t border-white/10">
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              onClick={() => {
+                setTemporaryPasswordData(null);
+                setCopied(false);
+              }}
+              className="w-full sm:w-auto font-bold"
+            >
+              Done & Close
+            </Button>
+          </div>
+        </div>
+      </GlassModal>
     </div>
   );
 };
+

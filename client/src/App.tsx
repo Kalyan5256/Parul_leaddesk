@@ -9,6 +9,9 @@ import { AppLayout } from './components/layout/AppLayout';
 // Pages
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { ForceChangePasswordPage } from './pages/ForceChangePasswordPage';
 import { DailyReportPage } from './pages/DailyReportPage';
 import { MyLeadsPage } from './pages/MyLeadsPage';
 import { FollowUpsPage } from './pages/FollowUpsPage';
@@ -50,6 +53,18 @@ function App() {
               {/* Public Auth Routes */}
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route
+                path="/change-password"
+                element={
+                  <ProtectedRoute>
+                    <ForceChangePasswordPage />
+                  </ProtectedRoute>
+                }
+              />
+
+
 
               {/* Protected App Routes with Unified Layout */}
               <Route

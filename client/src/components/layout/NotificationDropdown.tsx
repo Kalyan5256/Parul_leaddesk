@@ -6,9 +6,18 @@ import { api } from '../../lib/api';
 
 export const NotificationDropdown: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [pushStatus, setPushStatus] = useState<NotificationPermission>('default');
+  const [isEnablingPush, setIsEnablingPush] = useState(false);
+  const [isTestingPush, setIsTestingPush] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setPushStatus(Notification.permission);
+    }
+  }, [isOpen]);
 
   const { data } = useQuery({
     queryKey: ['notifications'],
@@ -129,6 +138,53 @@ export const NotificationDropdown: React.FC = () => {
                   </div>
                 </div>
               ))
+            )}
+          </div>
+
+          {/* Web Push Management Footer */}
+          <div className="p-3 bg-black/40 border-t border-white/10 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1.5 text-slate-300">
+              <span className={`inline-block w-2 h-2 rounded-full ${
+                pushStatus === 'granted' ? 'bg-emerald-400 animate-pulse' : pushStatus === 'denied' ? 'bg-rose-400' : 'bg-amber-400'
+              }`} />
+              <span className="text-[11px] font-medium">
+                {pushStatus === 'granted' ? 'Push Alerts Active' : pushStatus === 'denied' ? 'Push Blocked in Browser' : 'Push Alerts Disabled'}
+              </span>
+            </div>
+
+            {pushStatus === 'granted' ? (
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  setIsTestingPush(true);
+                  const { sendTestPush } = await import('../../lib/push');
+                  await sendTestPush();
+                  setIsTestingPush(false);
+                }}
+                disabled={isTestingPush}
+                className="text-[11px] font-semibold text-pu-gold hover:text-yellow-300 transition-colors bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-md border border-white/10"
+              >
+                {isTestingPush ? 'Sending...' : 'Send Test Push'}
+              </button>
+            ) : pushStatus === 'denied' ? (
+              <span className="text-[10px] text-slate-500">Enable in URL bar</span>
+            ) : (
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  setIsEnablingPush(true);
+                  const { subscribeToPush } = await import('../../lib/push');
+                  const res = await subscribeToPush();
+                  if (res.success) {
+                    setPushStatus('granted');
+                  }
+                  setIsEnablingPush(false);
+                }}
+                disabled={isEnablingPush}
+                className="text-[11px] font-bold text-white bg-pu-red hover:bg-red-700 transition-colors px-2.5 py-1 rounded-md shadow-sm"
+              >
+                {isEnablingPush ? 'Enabling...' : 'Enable Alerts'}
+              </button>
             )}
           </div>
         </div>

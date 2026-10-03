@@ -45,6 +45,7 @@ export const LeadDetailDrawer: React.FC<LeadDetailDrawerProps> = ({
     tomorrow.setDate(tomorrow.getDate() + 1);
     return tomorrow.toISOString().split('T')[0];
   });
+  const [followUpTime, setFollowUpTime] = useState('10:00');
   const [followUpStatus, setFollowUpStatus] = useState('Follow Up');
   const [followUpNote, setFollowUpNote] = useState('');
 
@@ -77,6 +78,7 @@ export const LeadDetailDrawer: React.FC<LeadDetailDrawerProps> = ({
       return api.post('/follow-ups', {
         lead_id: leadId,
         follow_up_date: followUpDate,
+        follow_up_time: followUpTime || null,
         status: followUpStatus,
         note: followUpNote,
       });
@@ -260,13 +262,20 @@ export const LeadDetailDrawer: React.FC<LeadDetailDrawerProps> = ({
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Input
                     label="Next Follow-up Date"
                     type="date"
                     value={followUpDate}
                     onChange={(e) => setFollowUpDate(e.target.value)}
                     required
+                  />
+
+                  <Input
+                    label="Follow-up Time (IST)"
+                    type="time"
+                    value={followUpTime}
+                    onChange={(e) => setFollowUpTime(e.target.value)}
                   />
 
                   <Select
@@ -330,8 +339,13 @@ export const LeadDetailDrawer: React.FC<LeadDetailDrawerProps> = ({
                     className="p-3.5 rounded-xl glass-subtle border border-white/10 space-y-1.5 text-xs relative pl-4 border-l-2 border-l-pu-gold"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold text-white">
-                        {fu.follow_up_date}
+                      <span className="font-semibold text-white flex items-center gap-1.5">
+                        <span>{fu.follow_up_date}</span>
+                        {fu.follow_up_time && (
+                          <span className="text-[10px] text-pu-gold px-1.5 py-0.5 rounded bg-pu-gold/10 font-mono">
+                            {fu.follow_up_time.slice(0, 5)} IST
+                          </span>
+                        )}
                       </span>
                       <Badge variant="status" value={fu.status} size="sm">
                         {fu.status}

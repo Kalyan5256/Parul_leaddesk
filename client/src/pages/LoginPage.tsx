@@ -216,9 +216,12 @@ export const LoginPage: React.FC = () => {
                   <span>Remember my workstation</span>
                 </label>
 
-                <span className="text-slate-400 cursor-not-allowed">
+                <Link
+                  to="/forgot-password"
+                  className="text-slate-300 hover:text-pu-gold transition-colors font-medium hover:underline"
+                >
                   Forgot password?
-                </span>
+                </Link>
               </div>
 
               <Button

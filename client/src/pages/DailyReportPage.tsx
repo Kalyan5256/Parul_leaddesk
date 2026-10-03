@@ -35,6 +35,7 @@ interface LeadFormRow {
   course: string;
   status: 'New' | 'Interested' | 'Follow Up' | 'Not Interested' | 'Admission Done' | 'Wrong Number';
   follow_up_date: string;
+  follow_up_time?: string;
   remarks: string;
   error?: Record<string, string>;
   isDuplicate?: boolean;
@@ -130,6 +131,7 @@ export const DailyReportPage: React.FC = () => {
       course: COMMON_COURSES[0],
       status: 'New',
       follow_up_date: '',
+      follow_up_time: '',
       remarks: '',
       error: {},
       isDuplicate: false,
@@ -347,12 +349,17 @@ export const DailyReportPage: React.FC = () => {
           }
         }
 
-        // Auto follow-up date validation
+        // Auto follow-up date and time validation
         if (field === 'status') {
-          if (value === 'Follow Up' && !updated.follow_up_date) {
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            updated.follow_up_date = tomorrow.toISOString().split('T')[0];
+          if (value === 'Follow Up') {
+            if (!updated.follow_up_date) {
+              const tomorrow = new Date();
+              tomorrow.setDate(tomorrow.getDate() + 1);
+              updated.follow_up_date = tomorrow.toISOString().split('T')[0];
+            }
+            if (!updated.follow_up_time) {
+              updated.follow_up_time = '10:00';
+            }
           }
         }
 
@@ -421,6 +428,7 @@ export const DailyReportPage: React.FC = () => {
         course: l.course,
         status: l.status,
         follow_up_date: l.follow_up_date || null,
+        follow_up_time: l.follow_up_time || null,
         remarks: l.remarks?.trim() || null,
       }));
 
@@ -721,6 +729,21 @@ export const DailyReportPage: React.FC = () => {
                       lead.status === 'Follow Up'
                         ? 'Required for follow-up queue'
                         : 'Optional for other statuses'
+                    }
+                  />
+
+                  {/* Next Follow-up Time (IST) */}
+                  <Input
+                    label="Follow-up Time (IST)"
+                    type="time"
+                    value={lead.follow_up_time || ''}
+                    onChange={(e) =>
+                      handleFieldChange(lead.id, 'follow_up_time', e.target.value)
+                    }
+                    helperText={
+                      lead.status === 'Follow Up'
+                        ? 'Trigger push alert at this time'
+                        : 'Optional time'
                     }
                   />
 
