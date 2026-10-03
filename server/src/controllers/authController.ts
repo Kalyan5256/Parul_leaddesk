@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { dbStore } from '../db/store.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
-import { supabaseAdmin } from '../lib/supabase.js';
+import { supabaseAdmin, supabaseClient } from '../lib/supabase.js';
 
 const JWT_SECRET = process.env.SUPABASE_JWT_SECRET || 'parul_leaddesk_dev_jwt_super_secret_key_2026_safe';
 
@@ -30,7 +30,31 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const isValidPassword = await bcrypt.compare(password, user.password_hash);
+    let isValidPassword = false;
+    if (user.password_hash) {
+      isValidPassword = await bcrypt.compare(password, user.password_hash);
+    }
+
+    // If local hash is not present or doesn't match, verify against Supabase Auth
+    if (!isValidPassword && (supabaseClient || supabaseAdmin) && user.email) {
+      try {
+        const client = supabaseClient || supabaseAdmin!;
+        const { data: authData, error: authErr } = await client.auth.signInWithPassword({
+          email: user.email,
+          password,
+        });
+
+        if (authData?.user && !authErr) {
+          isValidPassword = true;
+          // Cache bcrypt hash for faster subsequent logins
+          const salt = await bcrypt.genSalt(10);
+          user.password_hash = await bcrypt.hash(password, salt);
+        }
+      } catch (sbErr) {
+        console.warn('Supabase password verification check note:', sbErr);
+      }
+    }
+
     if (!isValidPassword) {
       res.status(401).json({
         success: false,
