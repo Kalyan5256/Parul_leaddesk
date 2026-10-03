@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  body {
+    @apply bg-[#071A38] text-slate-100 min-h-screen antialiased overflow-x-hidden;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: rgba(11, 42, 91, 0.3);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(245, 168, 0, 0.5);
+  }
+}
+
+/* Parul LeadDesk Premium Mesh Gradient */
+.bg-pu-mesh {
+  background-color: #071A38;
+  background-image: 
+    radial-gradient(1200px 600px at 10% -10%, rgba(245, 168, 0, 0.24), transparent 60%),
+    radial-gradient(900px 500px at 90% 0%, rgba(200, 16, 46, 0.20), transparent 55%),
+    radial-gradient(1000px 700px at 50% 110%, rgba(23, 61, 122, 0.35), transparent 60%),
+    linear-gradient(135deg, #071A38 0%, #0B2A5B 45%, #123A78 100%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+/* Glassmorphism Classes */
+.glass {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 8px 32px rgba(2, 10, 30, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.glass-subtle {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.glass-dark {
+  background: rgba(11, 42, 91, 0.75);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 12px 40px rgba(2, 8, 24, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.glass-dropdown {
+  background: rgba(11, 42, 91, 0.95);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+}
+
+.glass-input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(10px);
+  color: #FFFFFF;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-input:focus {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(245, 168, 0, 0.8);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(245, 168, 0, 0.25);
+}
+
+.glass-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
