@@ -124,6 +124,9 @@ class DatabaseStore {
             employee_name: emp?.full_name || f.employee_name || 'Staff',
             lead_name: ld?.lead_name || f.lead_name || 'Student',
             lead_mobile: ld?.mobile || f.lead_mobile || '',
+            is_active: f.is_active ?? true,
+            completed_at: f.completed_at ?? null,
+            lead_status: ld?.status,
           };
         });
       }
@@ -627,15 +630,16 @@ class DatabaseStore {
     const dueList: Array<{ followUp: FollowUp; lead: Lead }> = [];
 
     for (const f of this.followUps) {
-      if (f.status === 'Admission Done' || f.status === 'Not Interested') continue;
+      if (f.is_active === false) continue;
+      const lead = this.leads.find((l) => l.id === f.lead_id);
+      if (!lead) continue;
+      if (['Admission Done', 'Not Interested', 'Wrong Number'].includes(lead.status)) continue;
+      if (f.status === 'Admission Done' || f.status === 'Not Interested' || f.status === 'Wrong Number') continue;
       if (f.is_notified) continue;
       if (f.follow_up_date !== todayIST) continue;
       if (!f.follow_up_time) continue;
       if (f.follow_up_time <= nowIST) {
-        const lead = this.leads.find((l) => l.id === f.lead_id);
-        if (lead) {
-          dueList.push({ followUp: f, lead });
-        }
+        dueList.push({ followUp: f, lead });
       }
     }
 
@@ -1041,6 +1045,29 @@ class DatabaseStore {
         console.error('Failed to update lead in Supabase:', upErr);
         throw new Error(`Database error updating lead: ${upErr.message}`);
       }
+
+      // If lead transitioned to a terminal status, deactivate active follow-ups in Supabase
+      if (updates.status && ['Not Interested', 'Admission Done', 'Wrong Number'].includes(updates.status)) {
+        try {
+          await supabaseAdmin
+            .from('follow_ups')
+            .update({ is_active: false, completed_at: nowIso })
+            .eq('lead_id', id)
+            .eq('is_active', true);
+        } catch (fErr) {
+          // Backward-compatible if column not yet added in Supabase
+        }
+      }
+    }
+
+    // If lead transitioned to a terminal status, deactivate active in-memory follow-ups
+    if (updates.status && ['Not Interested', 'Admission Done', 'Wrong Number'].includes(updates.status)) {
+      for (const f of this.followUps) {
+        if (f.lead_id === id) {
+          f.is_active = false;
+          f.completed_at = f.completed_at || nowIso;
+        }
+      }
     }
 
     const updatedLead: Lead = {
@@ -1117,13 +1144,24 @@ class DatabaseStore {
   async getFollowUps(filters: {
     employee_id?: string;
     team?: string;
+    lead_id?: string;
     group?: 'OVERDUE' | 'TODAY' | 'UPCOMING' | 'COMPLETED' | 'ALL';
   }): Promise<FollowUp[]> {
     if (supabaseAdmin && this.followUps.length === 0) {
       await this.syncFromSupabase();
     }
+
+    const todayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+    const leadMap = new Map(this.leads.map((l) => [l.id, l]));
+
+    // 1. If lead_id is requested (e.g. LeadDetailDrawer history), return full interaction history
+    if (filters.lead_id) {
+      let leadFUs = this.followUps.filter((f) => f.lead_id === filters.lead_id);
+      return leadFUs.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    }
+
+    // 2. Otherwise (Command Centre or Active Queues), resolve to ONE CURRENT REPRESENTATION PER LEAD
     let result = [...this.followUps];
-    const todayStr = new Date().toISOString().split('T')[0];
 
     if (filters.employee_id) {
       result = result.filter((f) => f.employee_id === filters.employee_id);
@@ -1136,21 +1174,68 @@ class DatabaseStore {
       result = result.filter((f) => teamUserIds.has(f.employee_id));
     }
 
-    if (filters.group === 'OVERDUE') {
-      result = result.filter(
-        (f) => f.follow_up_date < todayStr && f.status !== 'Admission Done' && f.status !== 'Not Interested'
-      );
-    } else if (filters.group === 'TODAY') {
-      result = result.filter((f) => f.follow_up_date === todayStr);
-    } else if (filters.group === 'UPCOMING') {
-      result = result.filter((f) => f.follow_up_date > todayStr);
-    } else if (filters.group === 'COMPLETED') {
-      result = result.filter(
-        (f) => f.status === 'Admission Done' || f.status === 'Not Interested'
-      );
+    // Group by lead_id to pick the single authoritative current follow-up
+    // Deterministic priority: active row first, then newest created_at, then highest id
+    const latestByLead = new Map<string, FollowUp>();
+    for (const f of result) {
+      const existing = latestByLead.get(f.lead_id);
+      if (!existing) {
+        latestByLead.set(f.lead_id, f);
+      } else {
+        if (f.is_active && !existing.is_active) {
+          latestByLead.set(f.lead_id, f);
+        } else if (f.is_active === existing.is_active) {
+          if (f.created_at > existing.created_at || (f.created_at === existing.created_at && f.id > existing.id)) {
+            latestByLead.set(f.lead_id, f);
+          }
+        }
+      }
     }
 
-    return result.sort((a, b) => b.follow_up_date.localeCompare(a.follow_up_date));
+    const currentFollowUps: FollowUp[] = [];
+    for (const [leadId, f] of latestByLead.entries()) {
+      const lead = leadMap.get(leadId);
+      if (!lead) continue;
+
+      const isTerminal = ['Admission Done', 'Not Interested', 'Wrong Number'].includes(lead.status);
+
+      // Always stamp authoritative lead_status from leads table
+      const item: FollowUp = {
+        ...f,
+        lead_status: lead.status,
+      };
+
+      if (filters.group === 'OVERDUE') {
+        if (!isTerminal && f.is_active !== false && f.follow_up_date < todayIST) {
+          currentFollowUps.push(item);
+        }
+      } else if (filters.group === 'TODAY') {
+        if (!isTerminal && f.is_active !== false && f.follow_up_date === todayIST) {
+          currentFollowUps.push(item);
+        }
+      } else if (filters.group === 'UPCOMING') {
+        if (!isTerminal && f.is_active !== false && f.follow_up_date > todayIST) {
+          currentFollowUps.push(item);
+        }
+      } else if (filters.group === 'COMPLETED') {
+        if (isTerminal || f.status === 'Admission Done' || f.status === 'Not Interested') {
+          currentFollowUps.push(item);
+        }
+      } else {
+        // group === 'ALL' (Command Centre Kanban)
+        // If lead is terminal, authoritative displayed status is lead.status
+        if (isTerminal) {
+          currentFollowUps.push({
+            ...item,
+            status: lead.status,
+          });
+        } else {
+          currentFollowUps.push(item);
+        }
+      }
+    }
+
+    return currentFollowUps.sort((a, b) => b.follow_up_date.localeCompare(a.follow_up_date));
   }
 
   async addFollowUp(data: {
@@ -1173,6 +1258,18 @@ class DatabaseStore {
     let fuId = `fu-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
     if (supabaseAdmin) {
+      // 1. Deactivate prior active follow-ups for this lead in Supabase
+      try {
+        await supabaseAdmin
+          .from('follow_ups')
+          .update({ is_active: false, completed_at: now })
+          .eq('lead_id', data.lead_id)
+          .eq('is_active', true);
+      } catch (err) {
+        // Backward-compatible if is_active column is pending in DB
+      }
+
+      // 2. Insert new active follow-up
       const { data: dbFu, error: fuErr } = await supabaseAdmin
         .from('follow_ups')
         .insert({
@@ -1183,6 +1280,7 @@ class DatabaseStore {
           is_notified: false,
           status: data.status,
           note: data.note || null,
+          is_active: true,
         })
         .select('*')
         .single();
@@ -1212,6 +1310,14 @@ class DatabaseStore {
       }
     }
 
+    // Deactivate prior in-memory follow-ups for this lead
+    for (const priorFu of this.followUps) {
+      if (priorFu.lead_id === data.lead_id && priorFu.is_active !== false) {
+        priorFu.is_active = false;
+        priorFu.completed_at = now;
+      }
+    }
+
     const fu: FollowUp = {
       id: fuId,
       lead_id: data.lead_id,
@@ -1225,6 +1331,9 @@ class DatabaseStore {
       status: data.status,
       note: data.note || null,
       created_at: now,
+      is_active: true,
+      completed_at: null,
+      lead_status: data.status,
     };
 
     this.followUps.unshift(fu);
@@ -1259,6 +1368,14 @@ class DatabaseStore {
       if (updates.status !== undefined) dbUpdates.status = updates.status;
       if (updates.note !== undefined) dbUpdates.note = updates.note;
       if (updates.is_notified !== undefined) dbUpdates.is_notified = updates.is_notified;
+      if (updates.is_active !== undefined) dbUpdates.is_active = updates.is_active;
+      if (updates.completed_at !== undefined) dbUpdates.completed_at = updates.completed_at;
+
+      // If status changed to a terminal status, mark inactive
+      if (updates.status && ['Not Interested', 'Admission Done', 'Wrong Number'].includes(updates.status)) {
+        dbUpdates.is_active = false;
+        dbUpdates.completed_at = new Date().toISOString();
+      }
 
       const { error: fuErr } = await supabaseAdmin
         .from('follow_ups')
@@ -1292,6 +1409,9 @@ class DatabaseStore {
     Object.assign(fu, {
       ...updates,
       ...(formattedTime !== undefined ? { follow_up_time: formattedTime } : {}),
+      ...(updates.status && ['Not Interested', 'Admission Done', 'Wrong Number'].includes(updates.status)
+        ? { is_active: false, completed_at: new Date().toISOString() }
+        : {}),
     });
 
     const lead = this.leads.find((l) => l.id === fu.lead_id);

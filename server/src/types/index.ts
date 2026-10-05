@@ -65,6 +65,9 @@ export interface FollowUp {
   status: string;
   note: string | null;
   created_at: string;
+  is_active?: boolean;
+  completed_at?: string | null;
+  lead_status?: string;
 }
 
 export interface AppNotification {

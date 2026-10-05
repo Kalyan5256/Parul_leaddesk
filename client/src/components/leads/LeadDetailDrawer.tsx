@@ -91,6 +91,7 @@ export const LeadDetailDrawer: React.FC<LeadDetailDrawerProps> = ({
       queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['follow-ups'] });
+      queryClient.invalidateQueries({ queryKey: ['command-centre-followups'] });
       queryClient.invalidateQueries({ queryKey: ['kpis'] });
       if (onLeadUpdated) onLeadUpdated();
     },

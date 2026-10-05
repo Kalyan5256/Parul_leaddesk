@@ -32,7 +32,7 @@ export const FollowUpsPage: React.FC = () => {
     },
   });
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 
   const calculateOverdueDays = (dateStr: string) => {
     const diffTime = new Date(todayStr).getTime() - new Date(dateStr).getTime();

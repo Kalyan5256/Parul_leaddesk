@@ -92,10 +92,11 @@ export const FollowUpCommandCentrePage: React.FC = () => {
     },
   });
 
-  const todayStr = new Date().toISOString().split('T')[0];
-  const next7DaysStr = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  const next7DaysDate = new Date(Date.now() + 7 * 86400000);
+  const next7DaysStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(next7DaysDate);
 
-  // Group into Kanban columns (Section 38: Overdue, Today, This Week, Later, Done)
+  // Group into Kanban columns: Lead-Centric & Strict Column Exclusivity (ONE LEAD -> ONE CARD)
   const groupedData: Record<string, any[]> = {
     OVERDUE: [],
     TODAY: [],
@@ -104,8 +105,26 @@ export const FollowUpCommandCentrePage: React.FC = () => {
     DONE: [],
   };
 
+  const processedLeadIds = new Set<string>();
+
   followUps.forEach((fu: any) => {
-    if (fu.status === 'Admission Done' || fu.status === 'Not Interested') {
+    // Ensure one card per lead across all columns
+    if (!fu.lead_id || processedLeadIds.has(fu.lead_id)) {
+      return;
+    }
+    processedLeadIds.add(fu.lead_id);
+
+    // Prefer authoritative lead_status if available, otherwise fu.status
+    const effectiveStatus = fu.lead_status || fu.status;
+
+    // Strict priority hierarchy:
+    // 1. Terminal / Closed state -> DONE
+    if (
+      ['Admission Done', 'Not Interested', 'Wrong Number'].includes(effectiveStatus) ||
+      fu.status === 'Admission Done' ||
+      fu.status === 'Not Interested' ||
+      fu.status === 'Wrong Number'
+    ) {
       groupedData.DONE.push(fu);
     } else if (fu.follow_up_date < todayStr) {
       groupedData.OVERDUE.push(fu);
@@ -131,6 +150,7 @@ export const FollowUpCommandCentrePage: React.FC = () => {
       success('Candidate follow-up rescheduled successfully');
       setRescheduleItem(null);
       refetch();
+      queryClient.invalidateQueries({ queryKey: ['command-centre-followups'] });
       queryClient.invalidateQueries({ queryKey: ['follow-ups'] });
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-kpis'] });

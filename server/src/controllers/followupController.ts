@@ -11,15 +11,21 @@ export const getFollowUps = async (
     const userId = req.profile!.id;
 
     let targetEmployeeId: string | undefined = req.query.employee_id as string | undefined;
+    let targetTeam: string | undefined = undefined;
 
     if (userRole === 'employee') {
       targetEmployeeId = userId;
+    } else if (userRole === 'team_lead') {
+      targetTeam = req.profile!.team || undefined;
     }
 
     const group = req.query.group as 'OVERDUE' | 'TODAY' | 'UPCOMING' | 'COMPLETED' | 'ALL';
+    const lead_id = req.query.lead_id as string | undefined;
 
     const followUps = await dbStore.getFollowUps({
       employee_id: targetEmployeeId,
+      team: targetTeam,
+      lead_id,
       group: group || 'ALL',
     });
 
