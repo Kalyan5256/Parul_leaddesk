@@ -80,6 +80,19 @@ export const updateUser = async (
       return;
     }
 
+    try {
+      await dbStore.addAuditLog({
+        target_user_id: id,
+        target_user_name: updated.full_name,
+        performed_by: req.profile?.id || 'system',
+        performed_by_name: req.profile?.full_name || 'Manager',
+        action: 'USER_UPDATED',
+        metadata: req.body,
+      });
+    } catch (auditErr) {
+      console.warn('Audit log write notice:', auditErr);
+    }
+
     res.json({
       success: true,
       message: 'User details updated successfully',
@@ -110,6 +123,19 @@ export const updateUserStatus = async (
         code: 'USER_NOT_FOUND',
       });
       return;
+    }
+
+    try {
+      await dbStore.addAuditLog({
+        target_user_id: id,
+        target_user_name: updated.full_name,
+        performed_by: req.profile?.id || 'system',
+        performed_by_name: req.profile?.full_name || 'Manager',
+        action: is_active ? 'USER_ACTIVATED' : 'USER_DEACTIVATED',
+        metadata: { is_active },
+      });
+    } catch (auditErr) {
+      console.warn('Audit log write notice:', auditErr);
     }
 
     res.json({

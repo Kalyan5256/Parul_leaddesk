@@ -87,6 +87,8 @@ export const TeamManagementPage: React.FC = () => {
       setNewUsername('');
       setNewEmail('');
       setNewPhone('');
+      setNewRole('employee');
+      setNewPassword('Welcome@123');
       refetch();
       queryClient.invalidateQueries({ queryKey: ['team-management-users'] });
       queryClient.invalidateQueries({ queryKey: ['team-users'] });
@@ -103,6 +105,8 @@ export const TeamManagementPage: React.FC = () => {
     onSuccess: (res: any) => {
       success(res.message || 'Status updated');
       refetch();
+      queryClient.invalidateQueries({ queryKey: ['team-management-users'] });
+      queryClient.invalidateQueries({ queryKey: ['team-users'] });
     },
     onError: (err: any) => {
       showError(err.message || 'Failed to update user status');
@@ -121,6 +125,8 @@ export const TeamManagementPage: React.FC = () => {
       success('User profile updated');
       setEditingUser(null);
       refetch();
+      queryClient.invalidateQueries({ queryKey: ['team-management-users'] });
+      queryClient.invalidateQueries({ queryKey: ['team-users'] });
     },
     onError: (err: any) => {
       showError(err.message || 'Failed to update user');
@@ -145,6 +151,16 @@ export const TeamManagementPage: React.FC = () => {
     },
   });
 
+  const handleOpenAddUserModal = () => {
+    setNewFullName('');
+    setNewUsername('');
+    setNewEmail('');
+    setNewPhone('');
+    setNewRole('employee');
+    setNewPassword('Welcome@123');
+    setIsAddUserModalOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -163,7 +179,7 @@ export const TeamManagementPage: React.FC = () => {
           variant="primary"
           size="md"
           leftIcon={<UserPlus className="w-4 h-4" />}
-          onClick={() => setIsAddUserModalOpen(true)}
+          onClick={handleOpenAddUserModal}
         >
           Add Staff Member
         </Button>

@@ -271,6 +271,43 @@ class DatabaseStore {
           });
         } else if (authErr) {
           console.warn('Supabase Auth user creation note:', authErr.message);
+          // If the user already exists in Supabase Auth, update their role, credentials and profile
+          if (
+            authErr.message?.toLowerCase().includes('already') ||
+            authErr.message?.toLowerCase().includes('exists')
+          ) {
+            try {
+              const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
+              const existingSbUser = listData?.users.find(
+                (u) => u.email?.toLowerCase() === data.email.toLowerCase()
+              );
+              if (existingSbUser) {
+                authId = existingSbUser.id;
+                await supabaseAdmin.auth.admin.updateUserById(authId, {
+                  password: temporaryPassword,
+                  user_metadata: {
+                    username: data.username,
+                    full_name: data.full_name,
+                    role: data.role,
+                  },
+                  ban_duration: 'none',
+                });
+                await supabaseAdmin.from('profiles').upsert({
+                  id: authId,
+                  full_name: data.full_name,
+                  username: data.username,
+                  email: data.email,
+                  role: data.role,
+                  team: data.team || null,
+                  phone: data.phone || null,
+                  is_active: true,
+                  must_change_password: mustChange,
+                });
+              }
+            } catch (err: any) {
+              console.warn('Supabase fallback user recovery notice:', err?.message);
+            }
+          }
         }
       } catch (sbErr: any) {
         console.warn('Supabase sync on user creation note:', sbErr.message);
@@ -299,10 +336,67 @@ class DatabaseStore {
   }
 
   async updateUser(id: string, updates: Partial<UserProfile>): Promise<UserProfile | null> {
-    const index = this.users.findIndex((u) => u.id === id);
+    let index = this.users.findIndex((u) => u.id === id);
+    if (index === -1 && supabaseAdmin) {
+      await this.syncFromSupabase();
+      index = this.users.findIndex((u) => u.id === id);
+    }
     if (index === -1) return null;
 
     this.users[index] = { ...this.users[index], ...updates };
+
+    // Persist changes to Supabase profiles and Supabase Auth
+    if (supabaseAdmin) {
+      try {
+        const updatePayload: Record<string, any> = {};
+        if (updates.full_name !== undefined) updatePayload.full_name = updates.full_name;
+        if (updates.username !== undefined) updatePayload.username = updates.username;
+        if (updates.email !== undefined) updatePayload.email = updates.email;
+        if (updates.role !== undefined) updatePayload.role = updates.role;
+        if (updates.team !== undefined) updatePayload.team = updates.team;
+        if (updates.phone !== undefined) updatePayload.phone = updates.phone;
+        if (updates.is_active !== undefined) updatePayload.is_active = updates.is_active;
+        if (updates.must_change_password !== undefined) updatePayload.must_change_password = updates.must_change_password;
+
+        if (Object.keys(updatePayload).length > 0) {
+          const { error: sbErr } = await supabaseAdmin
+            .from('profiles')
+            .update(updatePayload)
+            .eq('id', id);
+
+          if (sbErr) {
+            console.error('Supabase profile update failed:', sbErr.message);
+          }
+        }
+
+        // Also synchronize Supabase Auth user metadata & ban state if applicable
+        const authUpdates: Record<string, any> = {};
+        const metaUpdates: Record<string, any> = {};
+        if (updates.role !== undefined) metaUpdates.role = updates.role;
+        if (updates.full_name !== undefined) metaUpdates.full_name = updates.full_name;
+        if (updates.username !== undefined) metaUpdates.username = updates.username;
+
+        if (Object.keys(metaUpdates).length > 0) {
+          authUpdates.user_metadata = metaUpdates;
+        }
+
+        if (updates.is_active === false) {
+          authUpdates.ban_duration = '876600h'; // ~100 years in auth.users
+        } else if (updates.is_active === true) {
+          authUpdates.ban_duration = 'none'; // unban in auth.users
+        }
+
+        if (Object.keys(authUpdates).length > 0) {
+          const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(id, authUpdates);
+          if (authErr) {
+            console.warn('Supabase Auth user update warning:', authErr.message);
+          }
+        }
+      } catch (err: any) {
+        console.error('Error syncing user update to Supabase:', err.message);
+      }
+    }
+
     const { password_hash, ...profile } = this.users[index];
     return profile;
   }
