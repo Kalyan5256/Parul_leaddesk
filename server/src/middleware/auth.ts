@@ -64,11 +64,13 @@ export const authenticate = async (
       return;
     }
 
-    if (!profile.is_active) {
+    if (!profile.is_active || profile.is_deleted) {
       res.status(403).json({
         success: false,
-        message: 'Your account has been deactivated. Please contact your manager.',
-        code: 'ACCOUNT_DEACTIVATED',
+        message: profile.is_deleted
+          ? 'Your account has been deleted. Please contact your manager.'
+          : 'Your account has been deactivated. Please contact your manager.',
+        code: profile.is_deleted ? 'ACCOUNT_DELETED' : 'ACCOUNT_DEACTIVATED',
       });
       return;
     }

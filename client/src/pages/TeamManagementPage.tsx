@@ -9,6 +9,7 @@ import { Select } from '../components/ui/Select';
 import { Avatar } from '../components/ui/Avatar';
 import { GlassModal } from '../components/ui/Modal';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import {
   Users,
   UserPlus,
@@ -20,15 +21,19 @@ import {
   KeyRound,
   Copy,
   RotateCcw,
+  Trash2,
 } from 'lucide-react';
 
 export const TeamManagementPage: React.FC = () => {
+  const { user: currentUser, isAdmin, isManager } = useAuth();
+  const canDeleteEmployees = isAdmin || isManager;
   const { success, error: showError } = useToast();
   const queryClient = useQueryClient();
 
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
   const [resetTargetUser, setResetTargetUser] = useState<any | null>(null);
+  const [deleteTargetUser, setDeleteTargetUser] = useState<any | null>(null);
   const [temporaryPasswordData, setTemporaryPasswordData] = useState<{
     password: string;
     user: any;
@@ -148,6 +153,23 @@ export const TeamManagementPage: React.FC = () => {
     },
     onError: (err: any) => {
       showError(err.message || 'Failed to reset password');
+    },
+  });
+
+  // Delete User Mutation
+  const deleteUserMutation = useMutation({
+    mutationFn: (userId: string) => api.delete(`/users/${userId}`),
+    onSuccess: (res: any) => {
+      success(res.message || 'Employee account deleted successfully');
+      setDeleteTargetUser(null);
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ['team-management-users'] });
+      queryClient.invalidateQueries({ queryKey: ['team-users'] });
+      queryClient.invalidateQueries({ queryKey: ['team-users-leads'] });
+      queryClient.invalidateQueries({ queryKey: ['team-stats'] });
+    },
+    onError: (err: any) => {
+      showError(err.message || 'Failed to delete employee account');
     },
   });
 
@@ -294,6 +316,26 @@ export const TeamManagementPage: React.FC = () => {
                             <CheckCircle className="w-3.5 h-3.5" />
                           )}
                         </button>
+
+                        {/* Delete Employee Button (Admin & Manager only) */}
+                        {canDeleteEmployees && (
+                          <button
+                            onClick={() => setDeleteTargetUser(u)}
+                            disabled={u.id === currentUser?.id}
+                            className={`p-1.5 rounded-lg transition-colors ${
+                              u.id === currentUser?.id
+                                ? 'opacity-30 cursor-not-allowed text-slate-500 bg-white/5'
+                                : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300'
+                            }`}
+                            title={
+                              u.id === currentUser?.id
+                                ? 'Cannot delete your own account'
+                                : `Delete ${u.full_name}'s account`
+                            }
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -557,6 +599,88 @@ export const TeamManagementPage: React.FC = () => {
             </Button>
           </div>
         </div>
+      </GlassModal>
+
+      {/* Delete Employee Confirmation Modal */}
+      <GlassModal
+        isOpen={Boolean(deleteTargetUser)}
+        onClose={() => {
+          if (!deleteUserMutation.isPending) {
+            setDeleteTargetUser(null);
+          }
+        }}
+        title="Delete Employee Account"
+        size="md"
+      >
+        {deleteTargetUser && (
+          <div className="space-y-4">
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-200 text-xs space-y-2">
+              <div className="font-bold flex items-center gap-1.5 text-rose-300 text-sm">
+                <ShieldAlert className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>Confirm Account Deletion</span>
+              </div>
+              <p>
+                Are you sure you want to delete the employee account for{' '}
+                <strong className="text-white font-semibold">{deleteTargetUser.full_name}</strong>?
+              </p>
+              <p className="text-[11px] text-rose-300/80 leading-relaxed">
+                ✓ Their login access will be immediately terminated and active sessions revoked.
+                <br />
+                ✓ All assigned leads, historical follow-ups, daily reports, and audit logs will remain safely preserved in the database.
+              </p>
+            </div>
+
+            {/* Selected Employee Details Summary */}
+            <div className="bg-black/30 rounded-xl p-3.5 border border-white/10 text-xs text-slate-300 space-y-2">
+              <div className="flex justify-between py-1 border-b border-white/5">
+                <span className="text-slate-400">Employee Name:</span>
+                <span className="font-bold text-white">{deleteTargetUser.full_name}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-white/5">
+                <span className="text-slate-400">Username:</span>
+                <span className="font-mono text-slate-300">@{deleteTargetUser.username}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-white/5">
+                <span className="text-slate-400">Email:</span>
+                <span className="text-slate-300">{deleteTargetUser.email}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-white/5">
+                <span className="text-slate-400">Role:</span>
+                <Badge variant="role" value={deleteTargetUser.role} size="sm">
+                  {deleteTargetUser.role}
+                </Badge>
+              </div>
+              <div className="flex justify-between py-1">
+                <span className="text-slate-400">Total Leads Assigned:</span>
+                <span className="font-bold text-pu-gold">
+                  {(statsMap.get(deleteTargetUser.id) as any)?.totalLeads ?? 0} Leads
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+              <Button
+                type="button"
+                variant="outline"
+                size="md"
+                disabled={deleteUserMutation.isPending}
+                onClick={() => setDeleteTargetUser(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="md"
+                isLoading={deleteUserMutation.isPending}
+                onClick={() => deleteUserMutation.mutate(deleteTargetUser.id)}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-lg shadow-rose-600/30"
+              >
+                {deleteUserMutation.isPending ? 'Deleting Account...' : 'Delete Employee'}
+              </Button>
+            </div>
+          </div>
+        )}
       </GlassModal>
     </div>
   );

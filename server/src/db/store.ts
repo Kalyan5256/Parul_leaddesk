@@ -74,6 +74,9 @@ class DatabaseStore {
               team: p.team || null,
               phone: p.phone || null,
               is_active: p.is_active ?? true,
+              is_deleted: p.is_deleted ?? false,
+              deleted_at: p.deleted_at || null,
+              deleted_by: p.deleted_by || null,
               must_change_password: p.must_change_password ?? false,
               password_reset_at: p.password_reset_at || null,
               password_reset_by: p.password_reset_by || null,
@@ -160,6 +163,9 @@ class DatabaseStore {
             team: profile.team || null,
             phone: profile.phone || null,
             is_active: profile.is_active ?? true,
+            is_deleted: profile.is_deleted ?? false,
+            deleted_at: profile.deleted_at || null,
+            deleted_by: profile.deleted_by || null,
             must_change_password: profile.must_change_password ?? false,
             password_reset_at: profile.password_reset_at || null,
             password_reset_by: profile.password_reset_by || null,
@@ -197,6 +203,9 @@ class DatabaseStore {
             team: profile.team || null,
             phone: profile.phone || null,
             is_active: profile.is_active ?? true,
+            is_deleted: profile.is_deleted ?? false,
+            deleted_at: profile.deleted_at || null,
+            deleted_by: profile.deleted_by || null,
             must_change_password: profile.must_change_password ?? false,
             password_reset_at: profile.password_reset_at || null,
             password_reset_by: profile.password_reset_by || null,
@@ -218,7 +227,9 @@ class DatabaseStore {
     if (supabaseAdmin) {
       await this.syncFromSupabase();
     }
-    return this.users.map(({ password_hash, ...profile }) => profile);
+    return this.users
+      .filter((u) => !u.is_deleted)
+      .map(({ password_hash, ...profile }) => profile);
   }
 
   async createUser(data: {
@@ -356,6 +367,9 @@ class DatabaseStore {
         if (updates.team !== undefined) updatePayload.team = updates.team;
         if (updates.phone !== undefined) updatePayload.phone = updates.phone;
         if (updates.is_active !== undefined) updatePayload.is_active = updates.is_active;
+        if (updates.is_deleted !== undefined) updatePayload.is_deleted = updates.is_deleted;
+        if (updates.deleted_at !== undefined) updatePayload.deleted_at = updates.deleted_at;
+        if (updates.deleted_by !== undefined) updatePayload.deleted_by = updates.deleted_by;
         if (updates.must_change_password !== undefined) updatePayload.must_change_password = updates.must_change_password;
 
         if (Object.keys(updatePayload).length > 0) {
@@ -403,6 +417,55 @@ class DatabaseStore {
 
   async updateUserStatus(id: string, isActive: boolean): Promise<UserProfile | null> {
     return this.updateUser(id, { is_active: isActive });
+  }
+
+  async deleteUser(id: string, actorId: string): Promise<boolean> {
+    let index = this.users.findIndex((u) => u.id === id);
+    if (index === -1 && supabaseAdmin) {
+      await this.syncFromSupabase();
+      index = this.users.findIndex((u) => u.id === id);
+    }
+    if (index === -1) return false;
+
+    const now = new Date().toISOString();
+    this.users[index].is_active = false;
+    this.users[index].is_deleted = true;
+    this.users[index].deleted_at = now;
+    this.users[index].deleted_by = actorId;
+
+    // Invalidate reset tokens
+    this.resetTokens = this.resetTokens.filter((t) => t.userId !== id);
+
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin.auth.admin.updateUserById(id, {
+          ban_duration: '876600h', // Revoke access permanently
+        });
+
+        const { error: profileErr } = await supabaseAdmin
+          .from('profiles')
+          .update({
+            is_active: false,
+            is_deleted: true,
+            deleted_at: now,
+            deleted_by: actorId,
+          })
+          .eq('id', id);
+
+        if (profileErr) {
+          await supabaseAdmin
+            .from('profiles')
+            .update({
+              is_active: false,
+            })
+            .eq('id', id);
+        }
+      } catch (err: any) {
+        console.warn('Supabase sync on user deletion note:', err?.message);
+      }
+    }
+
+    return true;
   }
 
   async getStoredUserById(id: string): Promise<StoredUser | null> {
@@ -1193,6 +1256,59 @@ class DatabaseStore {
     return true;
   }
 
+  async getNotInterestedLeadsCount(): Promise<number> {
+    if (supabaseAdmin && this.leads.length === 0) {
+      await this.syncFromSupabase();
+    }
+    return this.leads.filter((l) => l.status === 'Not Interested').length;
+  }
+
+  async getNotInterestedLeadsWithHistory(): Promise<{
+    leads: Lead[];
+    followUps: FollowUp[];
+  }> {
+    if (supabaseAdmin && this.leads.length === 0) {
+      await this.syncFromSupabase();
+    }
+    const notInterestedLeads = this.leads.filter((l) => l.status === 'Not Interested');
+    const leadIds = new Set(notInterestedLeads.map((l) => l.id));
+    const relatedFollowUps = this.followUps.filter((f) => leadIds.has(f.lead_id));
+    return { leads: notInterestedLeads, followUps: relatedFollowUps };
+  }
+
+  async deleteNotInterestedLeads(targetLeadIds: string[]): Promise<number> {
+    const idSet = new Set(targetLeadIds);
+    // Strict verification: only delete leads whose status is actually 'Not Interested'
+    const eligibleLeads = this.leads.filter(
+      (l) => idSet.has(l.id) && l.status === 'Not Interested'
+    );
+    const eligibleIds = eligibleLeads.map((l) => l.id);
+
+    if (eligibleIds.length === 0) {
+      return 0;
+    }
+
+    const eligibleIdSet = new Set(eligibleIds);
+
+    if (supabaseAdmin) {
+      const { error: delErr } = await supabaseAdmin
+        .from('leads')
+        .delete()
+        .in('id', eligibleIds)
+        .eq('status', 'Not Interested');
+
+      if (delErr) {
+        console.error('Failed to delete Not Interested leads from Supabase:', delErr);
+        throw new Error(`Failed to delete leads from Supabase: ${delErr.message}`);
+      }
+    }
+
+    this.leads = this.leads.filter((l) => !eligibleIdSet.has(l.id));
+    this.followUps = this.followUps.filter((f) => !eligibleIdSet.has(f.lead_id));
+
+    return eligibleIds.length;
+  }
+
   async assignLeads(leadIds: string[], targetEmployeeId: string): Promise<number> {
     const targetEmp = await this.getUserById(targetEmployeeId);
     if (!targetEmp) throw new Error('Target employee not found');
@@ -1349,6 +1465,9 @@ class DatabaseStore {
       ? (data.follow_up_time.length === 5 ? `${data.follow_up_time}:00` : data.follow_up_time)
       : null;
 
+    const validStatuses: LeadStatus[] = ['New', 'Interested', 'Follow Up', 'Not Interested', 'Admission Done', 'Wrong Number'];
+    const leadStatusToUpdate = validStatuses.includes(data.status as any) ? (data.status as LeadStatus) : lead.status;
+
     let fuId = `fu-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
     if (supabaseAdmin) {
@@ -1387,13 +1506,13 @@ class DatabaseStore {
         fuId = dbFu.id;
       }
 
-      // Update lead follow-up date and status in Supabase
+      // Update lead follow-up date and status in Supabase if valid status
       const { error: leadUpErr } = await supabaseAdmin
         .from('leads')
         .update({
           follow_up_date: data.follow_up_date,
           follow_up_time: formattedTime,
-          status: data.status,
+          status: leadStatusToUpdate,
           is_notified: false,
           updated_at: now,
         })
@@ -1436,7 +1555,7 @@ class DatabaseStore {
     lead.follow_up_date = data.follow_up_date;
     lead.follow_up_time = formattedTime;
     lead.is_notified = false;
-    if (data.status) {
+    if (data.status && validStatuses.includes(data.status as any)) {
       lead.status = data.status as LeadStatus;
     }
     lead.updated_at = now;

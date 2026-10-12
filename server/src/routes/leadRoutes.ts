@@ -8,6 +8,9 @@ import {
   deleteLead,
   assignLeads,
   exportLeads,
+  getNotInterestedCount,
+  exportAndDeleteNotInterested,
+  downloadExportFile,
 } from '../controllers/leadController.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireRole } from '../middleware/roles.js';
@@ -27,6 +30,24 @@ router.get('/', getLeads);
 router.post('/bulk', validate(bulkLeadSubmissionSchema), bulkCreateLeads);
 router.post('/check-duplicate', validate(checkDuplicateSchema), checkDuplicates);
 router.get('/export', exportLeads);
+
+// Manual Not Interested leads operations (Admin and Manager only)
+router.get(
+  '/not-interested/count',
+  requireRole('manager', 'admin'),
+  getNotInterestedCount
+);
+router.post(
+  '/export-and-delete-not-interested',
+  requireRole('manager', 'admin'),
+  exportAndDeleteNotInterested
+);
+router.get(
+  '/exports/download/:filename',
+  requireRole('manager', 'admin'),
+  downloadExportFile
+);
+
 router.post(
   '/assign',
   requireRole('manager', 'admin'),

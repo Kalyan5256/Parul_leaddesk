@@ -6,6 +6,7 @@ import {
   updateUserStatus,
   resetEmployeePassword,
   changeOwnPassword,
+  deleteUser,
 } from '../controllers/userController.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireRole } from '../middleware/roles.js';
@@ -54,6 +55,9 @@ router.patch(
   validate(updateStatusSchema),
   updateUserStatus
 );
+
+// Delete employee account (Admin and Manager only)
+router.delete('/:id', requireRole('manager', 'admin'), deleteUser);
 
 export default router;
 

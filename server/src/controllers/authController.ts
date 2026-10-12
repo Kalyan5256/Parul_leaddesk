@@ -21,11 +21,13 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    if (!user.is_active) {
+    if (!user.is_active || user.is_deleted) {
       res.status(403).json({
         success: false,
-        message: 'Your account has been deactivated. Contact an administrator.',
-        code: 'ACCOUNT_DEACTIVATED',
+        message: user.is_deleted
+          ? 'Your account has been deleted. Contact an administrator.'
+          : 'Your account has been deactivated. Contact an administrator.',
+        code: user.is_deleted ? 'ACCOUNT_DELETED' : 'ACCOUNT_DEACTIVATED',
       });
       return;
     }

@@ -150,6 +150,33 @@ class ApiService {
     document.body.removeChild(link);
     window.URL.revokeObjectURL(downloadUrl);
   }
+
+  async downloadExcel(endpoint: string, filename: string) {
+    const fullUrl = endpoint.startsWith('http')
+      ? endpoint
+      : `${API_BASE_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+    const token = localStorage.getItem('parul_auth_token');
+
+    const res = await fetch(fullUrl, {
+      headers: {
+        Authorization: token ? `Bearer ${token}` : '',
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error('Failed to download Excel archive');
+    }
+
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(downloadUrl);
+  }
 }
 
 export const api = new ApiService();

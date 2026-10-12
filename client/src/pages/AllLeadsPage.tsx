@@ -28,7 +28,8 @@ import {
 } from 'lucide-react';
 
 export const AllLeadsPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isAdmin, isManager } = useAuth();
+  const canManageLeads = isAdmin || isManager;
   const { success, error: showError } = useToast();
   const queryClient = useQueryClient();
 
@@ -48,9 +49,51 @@ export const AllLeadsPage: React.FC = () => {
   const [isBulkAssignModalOpen, setIsBulkAssignModalOpen] = useState(false);
   const [targetEmployeeId, setTargetEmployeeId] = useState('');
 
+  // Export & Delete Not Interested State
+  const [isExportDeleteModalOpen, setIsExportDeleteModalOpen] = useState(false);
+
   // Lead detail drawer
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  // Fetch count of Not Interested leads
+  const { data: notInterestedCount = 0, refetch: refetchNotInterestedCount } = useQuery({
+    queryKey: ['not-interested-count'],
+    queryFn: async () => {
+      const res = await api.get('/leads/not-interested/count');
+      return res.count || 0;
+    },
+    enabled: canManageLeads,
+  });
+
+  // Export & Delete Not Interested Mutation
+  const exportDeleteMutation = useMutation({
+    mutationFn: () => api.post('/leads/export-and-delete-not-interested'),
+    onSuccess: async (res: any) => {
+      setIsExportDeleteModalOpen(false);
+      if (res.exportedCount > 0 && res.filename) {
+        success(`Successfully exported and deleted ${res.deletedCount} 'Not Interested' leads.`);
+        try {
+          await api.downloadExcel(
+            `/leads/exports/download/${res.filename}`,
+            res.filename
+          );
+        } catch (dlErr: any) {
+          console.warn('Auto-download notice:', dlErr);
+        }
+      } else {
+        success(res.message || 'Operation completed');
+      }
+      refetch();
+      refetchNotInterestedCount();
+      queryClient.invalidateQueries({ queryKey: ['all-leads'] });
+      queryClient.invalidateQueries({ queryKey: ['not-interested-count'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-kpis'] });
+    },
+    onError: (err: any) => {
+      showError(err.message || 'Failed to export and delete Not Interested leads');
+    },
+  });
 
   // Fetch Users for reassignment & filters
   const { data: usersData } = useQuery({
@@ -182,7 +225,7 @@ export const AllLeadsPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {selectedLeadIds.length > 0 && (
             <Button
               variant="primary"
@@ -191,6 +234,27 @@ export const AllLeadsPage: React.FC = () => {
               onClick={() => setIsBulkAssignModalOpen(true)}
             >
               Assign ({selectedLeadIds.length})
+            </Button>
+          )}
+
+          {canManageLeads && (
+            <Button
+              variant="outline"
+              size="md"
+              leftIcon={<Trash2 className="w-4 h-4 text-rose-400" />}
+              onClick={() => {
+                if (notInterestedCount === 0) {
+                  success('There are no leads marked "Not Interested" to export or delete.');
+                  return;
+                }
+                setIsExportDeleteModalOpen(true);
+              }}
+              className="border-rose-500/30 hover:border-rose-500/50 hover:bg-rose-500/10 text-rose-300 font-semibold"
+            >
+              <span>Export & Delete Not Interested</span>
+              <span className="ml-1.5 px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                {notInterestedCount}
+              </span>
             </Button>
           )}
 
@@ -558,6 +622,74 @@ export const AllLeadsPage: React.FC = () => {
               onClick={() => assignMutation.mutate()}
             >
               Confirm Reassignment
+            </Button>
+          </div>
+        </div>
+      </GlassModal>
+
+      {/* Export & Delete Not Interested Confirmation Modal */}
+      <GlassModal
+        isOpen={isExportDeleteModalOpen}
+        onClose={() => {
+          if (!exportDeleteMutation.isPending) {
+            setIsExportDeleteModalOpen(false);
+          }
+        }}
+        title="Export & Delete Not Interested Leads"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-200 text-xs sm:text-sm space-y-2">
+            <div className="font-bold flex items-center gap-2 text-rose-300 text-sm">
+              <Trash2 className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>Administrative Confirmation</span>
+            </div>
+            <p className="leading-relaxed">
+              All <strong className="text-white font-semibold">{notInterestedCount}</strong> lead(s) currently marked as{' '}
+              <strong className="text-rose-300 font-semibold">'Not Interested'</strong> will be compiled into an Excel (<code>.xlsx</code>) archive file with complete contact information, counsellor assignments, and all recorded follow-up history.
+            </p>
+            <p className="leading-relaxed">
+              Only after the file is successfully generated and verified in secure storage, these leads will be <strong className="text-white font-semibold">permanently removed from active CRM views</strong>.
+            </p>
+            <p className="text-[11px] text-rose-300/80">
+              ✓ Leads with other statuses (New, Interested, Follow Up, Admission Done, Wrong Number) remain completely untouched.
+            </p>
+          </div>
+
+          <div className="bg-black/30 rounded-xl p-3 border border-white/10 text-xs text-slate-300 space-y-1.5">
+            <div className="flex justify-between py-1 border-b border-white/5">
+              <span>Target Lead Status:</span>
+              <span className="font-bold text-rose-300">Not Interested</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-white/5">
+              <span>Records to Export & Delete:</span>
+              <span className="font-bold text-white">{notInterestedCount} Lead(s)</span>
+            </div>
+            <div className="flex justify-between py-1">
+              <span>Export Format:</span>
+              <span className="font-bold text-pu-gold">Excel (.xlsx) with Follow-up History</span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              disabled={exportDeleteMutation.isPending}
+              onClick={() => setIsExportDeleteModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="md"
+              isLoading={exportDeleteMutation.isPending}
+              onClick={() => exportDeleteMutation.mutate()}
+              className="bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-lg shadow-rose-600/30"
+            >
+              {exportDeleteMutation.isPending ? 'Exporting & Deleting...' : 'Confirm Export & Delete'}
             </Button>
           </div>
         </div>

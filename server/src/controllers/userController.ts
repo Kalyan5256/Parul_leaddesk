@@ -238,3 +238,122 @@ export const changeOwnPassword = async (
   }
 };
 
+export const deleteUser = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const actor = req.profile!;
+    const actorId = actor.id;
+    const actorRole = actor.role;
+
+    // Strict role verification: Only admin and manager can delete accounts
+    if (actorRole !== 'admin' && actorRole !== 'manager') {
+      res.status(403).json({
+        success: false,
+        message: 'Forbidden: Insufficient permissions to delete employee account',
+        code: 'FORBIDDEN',
+      });
+      return;
+    }
+
+    const targetUser = await dbStore.getUserById(id);
+    if (!targetUser) {
+      res.status(404).json({
+        success: false,
+        message: 'Employee account not found',
+        code: 'USER_NOT_FOUND',
+      });
+      return;
+    }
+
+    // Security Rule: Prevent deletion of own account
+    if (targetUser.id === actorId) {
+      res.status(400).json({
+        success: false,
+        message: 'You cannot delete your own account.',
+        code: 'CANNOT_DELETE_SELF',
+      });
+      return;
+    }
+
+    // Security Rule: Managers cannot delete Administrator accounts
+    if (targetUser.role === 'admin' && actorRole !== 'admin') {
+      res.status(403).json({
+        success: false,
+        message: 'Forbidden: Managers cannot delete administrator accounts',
+        code: 'FORBIDDEN',
+      });
+      return;
+    }
+
+    // Security Rule: Protect the last active administrator
+    if (targetUser.role === 'admin') {
+      const allUsers = await dbStore.getAllUsers();
+      const activeAdmins = allUsers.filter(
+        (u) => u.role === 'admin' && u.is_active && !u.is_deleted
+      );
+      if (activeAdmins.length <= 1) {
+        res.status(400).json({
+          success: false,
+          message: 'Cannot delete the last active administrator account.',
+          code: 'CANNOT_DELETE_LAST_ADMIN',
+        });
+        return;
+      }
+    }
+
+    // Execute safe soft deletion (preserves leads, follow-ups, reports, attendance, and audit records)
+    const deleted = await dbStore.deleteUser(id, actorId);
+    if (!deleted) {
+      res.status(400).json({
+        success: false,
+        message: 'Failed to delete employee account',
+        code: 'DELETE_FAILED',
+      });
+      return;
+    }
+
+    // Record deletion in Audit Log
+    try {
+      await dbStore.addAuditLog({
+        target_user_id: id,
+        target_user_name: targetUser.full_name,
+        performed_by: actorId,
+        performed_by_name: actor.full_name,
+        action: 'EMPLOYEE_DELETED',
+        metadata: {
+          deleted_user_id: id,
+          deleted_user_name: targetUser.full_name,
+          deleted_user_role: targetUser.role,
+          deleted_user_username: targetUser.username,
+          deleted_user_email: targetUser.email,
+          deletion_type: 'soft_delete_preserved_records',
+        },
+      });
+    } catch (auditErr) {
+      console.warn('Audit log write notice:', auditErr);
+    }
+
+    res.json({
+      success: true,
+      message: `Employee account for '${targetUser.full_name}' deleted successfully. Historical records preserved.`,
+      data: {
+        id: targetUser.id,
+        full_name: targetUser.full_name,
+        username: targetUser.username,
+        role: targetUser.role,
+      },
+    });
+  } catch (error: any) {
+    console.error('deleteUser error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to delete employee account',
+      code: 'USER_DELETE_FAILED',
+    });
+  }
+};
+
+

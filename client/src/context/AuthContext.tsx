@@ -12,6 +12,8 @@ export interface UserProfile {
   team: string | null;
   phone: string | null;
   is_active: boolean;
+  is_deleted?: boolean;
+  deleted_at?: string | null;
   must_change_password?: boolean;
   password_reset_at?: string | null;
   password_reset_by?: string | null;
