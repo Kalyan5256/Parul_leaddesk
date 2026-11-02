@@ -15,6 +15,7 @@ import {
   LogOut,
   ChevronRight,
   ShieldCheck,
+  CalendarCheck,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -69,6 +70,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ className = '', onNavigate }) 
       badge: undefined,
     },
 
+    // Personal Office Attendance (Employee & Manager desktop check-in/out)
+    ...(isEmployee || isManager
+      ? [
+          {
+            to: '/attendance',
+            label: 'My Attendance',
+            icon: CalendarCheck,
+            badge: 'Office',
+          },
+        ]
+      : []),
+
     // Manager & Admin: All Leads
     ...(!isEmployee
       ? [
@@ -101,6 +114,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ className = '', onNavigate }) 
             label: 'Staff Management',
             icon: Users,
             badge: undefined,
+          },
+        ]
+      : []),
+
+    // Manager & Admin: Attendance Management & Exports
+    ...(isManager || isAdmin
+      ? [
+          {
+            to: '/admin/attendance',
+            label: 'Attendance Desk',
+            icon: ShieldCheck,
+            badge: isAdmin ? 'Admin' : 'Manager',
           },
         ]
       : []),

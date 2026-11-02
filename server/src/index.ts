@@ -11,6 +11,7 @@ import followupRoutes from './routes/followupRoutes.js';
 import reportRoutes from './routes/reportRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
+import attendanceRoutes from './routes/attendanceRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { authenticate } from './middleware/auth.js';
 import { getMe } from './controllers/authController.js';
@@ -83,6 +84,7 @@ app.use('/api/follow-ups', followupRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/attendance', attendanceRoutes);
 
 // 404 Handler
 app.use((_req, res) => {
@@ -100,7 +102,7 @@ import { startFollowUpScheduler } from './services/followupScheduler.js';
 
 // Start Server
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`\n==================================================`);
     console.log(`🚀 PARUL LEADDESK API Server running on port ${PORT}`);
     console.log(`📍 Endpoint: http://localhost:${PORT}/api`);
@@ -109,6 +111,19 @@ if (process.env.NODE_ENV !== 'test') {
 
     // Start background push notification scheduler (runs every minute in IST)
     startFollowUpScheduler();
+  });
+
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`\n❌ Error: Port ${PORT} is already in use by another process.`);
+      console.error(`💡 To free port ${PORT} in PowerShell, run:`);
+      console.error(`   Get-NetTCPConnection -LocalPort ${PORT} | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`);
+      console.error(`   Or terminate background node processes: Stop-Process -Name node -Force\n`);
+      process.exit(1);
+    } else {
+      console.error('Server error:', err);
+      process.exit(1);
+    }
   });
 }
 

@@ -17,6 +17,8 @@ import { ManagerDashboardPage } from './pages/ManagerDashboardPage';
 import { AllLeadsPage } from './pages/AllLeadsPage';
 import { FollowUpCommandCentrePage } from './pages/FollowUpCommandCentrePage';
 import { TeamManagementPage } from './pages/TeamManagementPage';
+import { EmployeeAttendancePage } from './pages/EmployeeAttendancePage';
+import { AdminAttendancePage } from './pages/AdminAttendancePage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -130,6 +132,26 @@ function App() {
                   element={
                     <ProtectedRoute allowedRoles={['manager', 'admin']}>
                       <TeamManagementPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* Personal Desktop Attendance (Employee & Manager) */}
+                <Route
+                  path="/attendance"
+                  element={
+                    <ProtectedRoute allowedRoles={['employee', 'manager']}>
+                      <EmployeeAttendancePage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* Attendance Administration Desk (Manager & Admin) */}
+                <Route
+                  path="/admin/attendance"
+                  element={
+                    <ProtectedRoute allowedRoles={['manager', 'admin']}>
+                      <AdminAttendancePage />
                     </ProtectedRoute>
                   }
                 />

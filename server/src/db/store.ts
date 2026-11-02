@@ -9,9 +9,25 @@ import {
   UserRole,
   AuditLog,
   PushSubscriptionRecord,
+  EmployeeDevice,
+  AttendanceRecord,
+  AttendanceAuditLog,
+  AttendanceChallenge,
+  AttendanceStatus,
+  MonthlyAttendanceReport,
+  MonthlyEmployeeSummary,
+  DeviceStatus,
 } from '../types/index.js';
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { supabaseAdmin, isSupabaseConfigured } from '../lib/supabase.js';
+import {
+  getKolkataDateString,
+  getKolkataTimeString,
+  getMonthDateRange,
+  formatMinutesToHours,
+} from '../utils/timezone.js';
+import { computeKeyFingerprint } from '../utils/cryptoVerification.js';
 
 interface StoredUser extends UserProfile {
   password_hash: string;
@@ -33,6 +49,10 @@ class DatabaseStore {
   private notifications: AppNotification[] = [];
   private auditLogs: AuditLog[] = [];
   private pushSubscriptions: PushSubscriptionRecord[] = [];
+  private devices: EmployeeDevice[] = [];
+  private attendanceRecords: AttendanceRecord[] = [];
+  private attendanceAuditLogs: AttendanceAuditLog[] = [];
+  private attendanceChallenges: AttendanceChallenge[] = [];
   private initialized = false;
 
 
@@ -50,6 +70,10 @@ class DatabaseStore {
     this.notifications = [];
     this.auditLogs = [];
     this.pushSubscriptions = [];
+    this.devices = [];
+    this.attendanceRecords = [];
+    this.attendanceAuditLogs = [];
+    this.attendanceChallenges = [];
     if (isSupabaseConfigured && supabaseAdmin) {
       await this.syncFromSupabase();
     }
@@ -132,6 +156,61 @@ class DatabaseStore {
             lead_status: ld?.status,
           };
         });
+      }
+
+      // Sync Registered Employee Devices
+      try {
+        const { data: devs, error: dErr } = await supabaseAdmin
+          .from('employee_devices')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (devs && !dErr) {
+          this.devices = devs.map((d: any) => ({
+            ...d,
+            employee_name: userMap.get(d.employee_id)?.full_name || 'Staff',
+          }));
+        }
+      } catch (devErr: any) {
+        // Table may be newly migrated
+      }
+
+      // Sync Attendance Records
+      try {
+        const { data: atts, error: aErr } = await supabaseAdmin
+          .from('attendance_records')
+          .select('*')
+          .order('attendance_date', { ascending: false });
+
+        if (atts && !aErr) {
+          const devMap = new Map(this.devices.map((d) => [d.id, d]));
+          this.attendanceRecords = atts.map((a: any) => ({
+            ...a,
+            employee_name: userMap.get(a.employee_id)?.full_name || 'Staff',
+            device_name: devMap.get(a.device_id)?.device_name || 'Office Laptop',
+          }));
+        }
+      } catch (attErr: any) {
+        // Table may be newly migrated
+      }
+
+      // Sync Attendance Audit Logs
+      try {
+        const { data: logs, error: lErr } = await supabaseAdmin
+          .from('attendance_audit_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(200);
+
+        if (logs && !lErr) {
+          this.attendanceAuditLogs = logs.map((log: any) => ({
+            ...log,
+            employee_name: userMap.get(log.employee_id)?.full_name || 'Staff',
+            performed_by_name: userMap.get(log.performed_by)?.full_name || 'Administrator',
+          }));
+        }
+      } catch (logErr: any) {
+        // Table may be newly migrated
       }
     } catch (err: any) {
       console.warn('Supabase sync notice:', err.message);
@@ -1922,6 +2001,909 @@ class DatabaseStore {
 
     return notif;
   }
+
+  // ============================================================================
+  // ATTENDANCE & DEVICE MANAGEMENT MODULE
+  // ============================================================================
+
+  // --- DEVICE MANAGEMENT ---
+
+  async registerDevice(params: {
+    employee_id: string;
+    device_name: string;
+    public_key: string;
+    key_algorithm?: string;
+    user_agent?: string;
+    ip_address?: string;
+    metadata?: any;
+  }): Promise<EmployeeDevice> {
+    const employee = await this.getUserById(params.employee_id);
+    if (!employee) {
+      throw new Error('Employee account not found');
+    }
+
+    const deviceId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const fingerprint = computeKeyFingerprint(params.public_key);
+
+    const device: EmployeeDevice = {
+      id: deviceId,
+      employee_id: params.employee_id,
+      employee_name: employee.full_name,
+      device_name: params.device_name.trim(),
+      device_fingerprint: fingerprint,
+      public_key: params.public_key,
+      key_algorithm: params.key_algorithm || 'ECDSA-P256',
+      status: 'pending', // Requires explicit Administrator approval
+      registered_at: now,
+      approved_at: null,
+      approved_by: null,
+      revoked_at: null,
+      revoked_by: null,
+      revocation_reason: null,
+      last_used_at: null,
+      user_agent: params.user_agent || null,
+      ip_address: params.ip_address || null,
+      metadata: params.metadata || {},
+      created_at: now,
+      updated_at: now,
+    };
+
+    this.devices.unshift(device);
+
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin.from('employee_devices').insert({
+          id: device.id,
+          employee_id: device.employee_id,
+          device_name: device.device_name,
+          device_fingerprint: device.device_fingerprint,
+          public_key: device.public_key,
+          key_algorithm: device.key_algorithm,
+          status: device.status,
+          registered_at: device.registered_at,
+          user_agent: device.user_agent,
+          ip_address: device.ip_address,
+          metadata: device.metadata,
+        });
+      } catch (err: any) {
+        console.warn('Supabase registerDevice error:', err.message);
+      }
+    }
+
+    await this.addAttendanceAuditLog({
+      employee_id: params.employee_id,
+      performed_by: params.employee_id,
+      action: 'DEVICE_REGISTER',
+      new_values: {
+        device_id: device.id,
+        device_name: device.device_name,
+        fingerprint,
+      },
+      reason: 'Employee submitted office laptop registration for administrator approval',
+    });
+
+    return device;
+  }
+
+  async getDeviceById(id: string): Promise<EmployeeDevice | null> {
+    const dev = this.devices.find((d) => d.id === id);
+    if (dev) return dev;
+
+    if (supabaseAdmin) {
+      try {
+        const { data } = await supabaseAdmin.from('employee_devices').select('*').eq('id', id).maybeSingle();
+        if (data) {
+          const emp = await this.getUserById(data.employee_id);
+          const loadedDev: EmployeeDevice = { ...data, employee_name: emp?.full_name || 'Staff' };
+          this.devices.push(loadedDev);
+          return loadedDev;
+        }
+      } catch {
+        // Not found
+      }
+    }
+    return null;
+  }
+
+  async getDevicesByEmployee(employeeId: string): Promise<EmployeeDevice[]> {
+    return this.devices
+      .filter((d) => d.employee_id === employeeId)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  async getAllDevices(filter?: { status?: string; employee_id?: string }): Promise<EmployeeDevice[]> {
+    if (supabaseAdmin) {
+      try {
+        const { data: devs } = await supabaseAdmin
+          .from('employee_devices')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (devs) {
+          const userMap = new Map(this.users.map((u) => [u.id, u]));
+          this.devices = devs.map((d: any) => ({
+            ...d,
+            employee_name: userMap.get(d.employee_id)?.full_name || 'Staff',
+          }));
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    let result = [...this.devices];
+    if (filter?.status) {
+      result = result.filter((d) => d.status === filter.status);
+    }
+    if (filter?.employee_id) {
+      result = result.filter((d) => d.employee_id === filter.employee_id);
+    }
+    return result;
+  }
+
+  async updateDeviceStatus(
+    deviceId: string,
+    status: DeviceStatus,
+    actorId: string,
+    reason?: string
+  ): Promise<EmployeeDevice> {
+    const device = await this.getDeviceById(deviceId);
+    if (!device) {
+      throw new Error('Device not found');
+    }
+
+    const actor = await this.getUserById(actorId);
+    const now = new Date().toISOString();
+    const oldStatus = device.status;
+
+    device.status = status;
+    device.updated_at = now;
+
+    if (status === 'approved') {
+      device.approved_at = now;
+      device.approved_by = actorId;
+      device.approved_by_name = actor?.full_name || 'Administrator';
+    } else if (status === 'revoked') {
+      device.revoked_at = now;
+      device.revoked_by = actorId;
+      device.revoked_by_name = actor?.full_name || 'Administrator';
+      device.revocation_reason = reason || 'Revoked by administrator';
+    }
+
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin
+          .from('employee_devices')
+          .update({
+            status: device.status,
+            approved_at: device.approved_at,
+            approved_by: device.approved_by,
+            revoked_at: device.revoked_at,
+            revoked_by: device.revoked_by,
+            revocation_reason: device.revocation_reason,
+            updated_at: now,
+          })
+          .eq('id', deviceId);
+      } catch (err: any) {
+        console.warn('Supabase updateDeviceStatus error:', err.message);
+      }
+    }
+
+    await this.addAttendanceAuditLog({
+      employee_id: device.employee_id,
+      performed_by: actorId,
+      action: status === 'approved' ? 'DEVICE_APPROVE' : 'DEVICE_REVOKE',
+      old_values: { status: oldStatus },
+      new_values: {
+        status,
+        device_id: device.id,
+        device_name: device.device_name,
+        reason: reason || null,
+      },
+      reason: reason || (status === 'approved' ? 'Administrator approved office laptop' : 'Administrator revoked device'),
+    });
+
+    return device;
+  }
+
+  async recordDeviceUsage(deviceId: string): Promise<void> {
+    const dev = this.devices.find((d) => d.id === deviceId);
+    const now = new Date().toISOString();
+    if (dev) {
+      dev.last_used_at = now;
+    }
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin
+          .from('employee_devices')
+          .update({ last_used_at: now })
+          .eq('id', deviceId);
+      } catch {
+        // Non-blocking
+      }
+    }
+  }
+
+  // --- CRYPTOGRAPHIC CHALLENGES ---
+
+  async createAttendanceChallenge(
+    employeeId: string,
+    deviceId: string,
+    nonce: string,
+    expiresAt: string
+  ): Promise<AttendanceChallenge> {
+    const challenge: AttendanceChallenge = {
+      id: crypto.randomUUID(),
+      employee_id: employeeId,
+      device_id: deviceId,
+      nonce,
+      expires_at: expiresAt,
+      used_at: null,
+      created_at: new Date().toISOString(),
+    };
+
+    this.attendanceChallenges.push(challenge);
+
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin.from('attendance_challenges').insert({
+          id: challenge.id,
+          employee_id: challenge.employee_id,
+          device_id: challenge.device_id,
+          nonce: challenge.nonce,
+          expires_at: challenge.expires_at,
+        });
+      } catch {
+        // Fallback
+      }
+    }
+
+    return challenge;
+  }
+
+  async consumeAttendanceChallenge(
+    nonce: string,
+    employeeId: string,
+    deviceId: string
+  ): Promise<boolean> {
+    let ch = this.attendanceChallenges.find((c) => c.nonce === nonce);
+    if (!ch && supabaseAdmin) {
+      try {
+        const { data } = await supabaseAdmin
+          .from('attendance_challenges')
+          .select('*')
+          .eq('nonce', nonce)
+          .maybeSingle();
+        if (data) ch = data;
+      } catch {
+        // Fallback
+      }
+    }
+
+    if (!ch) return false;
+    if (ch.employee_id !== employeeId || ch.device_id !== deviceId) return false;
+    if (ch.used_at) return false; // Replay attack prevented!
+    if (new Date(ch.expires_at).getTime() < Date.now()) return false; // Expired!
+
+    const now = new Date().toISOString();
+    ch.used_at = now;
+
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin
+          .from('attendance_challenges')
+          .update({ used_at: now })
+          .eq('id', ch.id);
+      } catch {
+        // Fallback
+      }
+    }
+
+    return true;
+  }
+
+  // --- ATTENDANCE CHECK-IN & CHECK-OUT ---
+
+  async checkInEmployee(
+    employeeId: string,
+    deviceId: string,
+    notes?: string,
+    status: AttendanceStatus = 'present'
+  ): Promise<AttendanceRecord> {
+    const todayDate = getKolkataDateString();
+    const existing = this.attendanceRecords.find(
+      (a) => a.employee_id === employeeId && a.attendance_date === todayDate
+    );
+
+    if (existing) {
+      throw new Error(`Employee already checked in for today (${todayDate})`);
+    }
+
+    const employee = await this.getUserById(employeeId);
+    const device = await this.getDeviceById(deviceId);
+    const now = new Date().toISOString();
+
+    const record: AttendanceRecord = {
+      id: crypto.randomUUID(),
+      employee_id: employeeId,
+      employee_name: employee?.full_name || 'Staff',
+      attendance_date: todayDate,
+      device_id: deviceId,
+      device_name: device?.device_name || 'Office Laptop',
+      check_in_time: now,
+      check_out_time: null,
+      total_minutes: 0,
+      status: status || 'present',
+      is_corrected: false,
+      notes: notes || null,
+      created_at: now,
+      updated_at: now,
+    };
+
+    this.attendanceRecords.unshift(record);
+
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin.from('attendance_records').insert({
+          id: record.id,
+          employee_id: record.employee_id,
+          attendance_date: record.attendance_date,
+          device_id: record.device_id,
+          check_in_time: record.check_in_time,
+          check_out_time: null,
+          total_minutes: 0,
+          status: record.status,
+          notes: record.notes,
+        });
+      } catch (err: any) {
+        console.warn('Supabase checkIn insert warning:', err.message);
+      }
+    }
+
+    await this.recordDeviceUsage(deviceId);
+
+    await this.addAttendanceAuditLog({
+      attendance_id: record.id,
+      employee_id: employeeId,
+      performed_by: employeeId,
+      action: 'CHECK_IN',
+      new_values: {
+        attendance_date: todayDate,
+        check_in_time: now,
+        device_id: deviceId,
+      },
+      reason: 'Employee checked in via registered office laptop',
+    });
+
+    return record;
+  }
+
+  async checkOutEmployee(
+    employeeId: string,
+    deviceId: string,
+    notes?: string,
+    status?: AttendanceStatus
+  ): Promise<AttendanceRecord> {
+    const todayDate = getKolkataDateString();
+    let record = this.attendanceRecords.find(
+      (a) => a.employee_id === employeeId && a.attendance_date === todayDate
+    );
+
+    if (!record && supabaseAdmin) {
+      try {
+        const { data } = await supabaseAdmin
+          .from('attendance_records')
+          .select('*')
+          .eq('employee_id', employeeId)
+          .eq('attendance_date', todayDate)
+          .maybeSingle();
+        if (data) {
+          record = data;
+          this.attendanceRecords.unshift(data);
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    if (!record) {
+      throw new Error(`No check-in record found for today (${todayDate}). Check-in is required before checking out.`);
+    }
+
+    if (record.check_out_time) {
+      throw new Error(`Attendance already checked out for today (${todayDate}) at ${record.check_out_time}.`);
+    }
+
+    const now = new Date().toISOString();
+    const checkInMs = new Date(record.check_in_time).getTime();
+    const checkOutMs = new Date(now).getTime();
+    const totalMinutes = Math.max(0, Math.round((checkOutMs - checkInMs) / 60000));
+
+    record.check_out_time = now;
+    record.total_minutes = totalMinutes;
+    if (status) {
+      record.status = status;
+    }
+    record.updated_at = now;
+    if (notes) {
+      record.notes = record.notes ? `${record.notes}; ${notes}` : notes;
+    }
+
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin
+          .from('attendance_records')
+          .update({
+            check_out_time: now,
+            total_minutes: totalMinutes,
+            status: record.status,
+            notes: record.notes,
+            updated_at: now,
+          })
+          .eq('id', record.id);
+      } catch (err: any) {
+        console.warn('Supabase checkOut update warning:', err.message);
+      }
+    }
+
+    await this.recordDeviceUsage(deviceId);
+
+    await this.addAttendanceAuditLog({
+      attendance_id: record.id,
+      employee_id: employeeId,
+      performed_by: employeeId,
+      action: 'CHECK_OUT',
+      new_values: {
+        attendance_date: todayDate,
+        check_out_time: now,
+        total_minutes: totalMinutes,
+      },
+      reason: 'Employee checked out via registered office laptop',
+    });
+
+    return record;
+  }
+
+  async getTodayAttendance(employeeId: string): Promise<AttendanceRecord | null> {
+    const todayDate = getKolkataDateString();
+    let record = this.attendanceRecords.find(
+      (a) => a.employee_id === employeeId && a.attendance_date === todayDate
+    );
+
+    if (!record && supabaseAdmin) {
+      try {
+        const { data } = await supabaseAdmin
+          .from('attendance_records')
+          .select('*')
+          .eq('employee_id', employeeId)
+          .eq('attendance_date', todayDate)
+          .maybeSingle();
+        if (data) {
+          const emp = await this.getUserById(data.employee_id);
+          const dev = data.device_id ? await this.getDeviceById(data.device_id) : null;
+          const loadedRecord: AttendanceRecord = {
+            ...data,
+            employee_name: emp?.full_name || 'Staff',
+            device_name: dev?.device_name || 'Office Laptop',
+          };
+          this.attendanceRecords.unshift(loadedRecord);
+          return loadedRecord;
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    return record || null;
+  }
+
+  async getAttendanceHistory(
+    employeeId: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<AttendanceRecord[]> {
+    if (supabaseAdmin) {
+      try {
+        let query = supabaseAdmin
+          .from('attendance_records')
+          .select('*')
+          .eq('employee_id', employeeId)
+          .order('attendance_date', { ascending: false });
+
+        if (startDate) query = query.gte('attendance_date', startDate);
+        if (endDate) query = query.lte('attendance_date', endDate);
+
+        const { data } = await query;
+        if (data) {
+          const user = await this.getUserById(employeeId);
+          const devMap = new Map(this.devices.map((d) => [d.id, d]));
+          return data.map((d: any) => ({
+            ...d,
+            employee_name: user?.full_name || 'Staff',
+            device_name: devMap.get(d.device_id)?.device_name || 'Office Laptop',
+          }));
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    return this.attendanceRecords
+      .filter((a) => {
+        if (a.employee_id !== employeeId) return false;
+        if (startDate && a.attendance_date < startDate) return false;
+        if (endDate && a.attendance_date > endDate) return false;
+        return true;
+      })
+      .sort((a, b) => b.attendance_date.localeCompare(a.attendance_date));
+  }
+
+  async getDailyAttendance(date: string): Promise<AttendanceRecord[]> {
+    if (supabaseAdmin) {
+      try {
+        const { data } = await supabaseAdmin
+          .from('attendance_records')
+          .select('*')
+          .eq('attendance_date', date)
+          .order('check_in_time', { ascending: true });
+
+        if (data) {
+          const userMap = new Map(this.users.map((u) => [u.id, u]));
+          const devMap = new Map(this.devices.map((d) => [d.id, d]));
+          return data.map((d: any) => ({
+            ...d,
+            employee_name: userMap.get(d.employee_id)?.full_name || 'Staff',
+            device_name: devMap.get(d.device_id)?.device_name || 'Office Laptop',
+          }));
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    const userMap = new Map(this.users.map((u) => [u.id, u]));
+    return this.attendanceRecords
+      .filter((a) => a.attendance_date === date)
+      .map((a) => ({
+        ...a,
+        employee_name: userMap.get(a.employee_id)?.full_name || a.employee_name || 'Staff',
+      }))
+      .sort((a, b) => a.check_in_time.localeCompare(b.check_in_time));
+  }
+
+  async getMissingCheckouts(): Promise<AttendanceRecord[]> {
+    const todayDate = getKolkataDateString();
+    if (supabaseAdmin) {
+      try {
+        const { data } = await supabaseAdmin
+          .from('attendance_records')
+          .select('*')
+          .is('check_out_time', null)
+          .lt('attendance_date', todayDate)
+          .order('attendance_date', { ascending: false });
+
+        if (data) {
+          const userMap = new Map(this.users.map((u) => [u.id, u]));
+          const devMap = new Map(this.devices.map((d) => [d.id, d]));
+          return data.map((d: any) => ({
+            ...d,
+            employee_name: userMap.get(d.employee_id)?.full_name || 'Staff',
+            device_name: devMap.get(d.device_id)?.device_name || 'Office Laptop',
+          }));
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    const userMap = new Map(this.users.map((u) => [u.id, u]));
+    return this.attendanceRecords
+      .filter((a) => !a.check_out_time && a.attendance_date < todayDate)
+      .map((a) => ({
+        ...a,
+        employee_name: userMap.get(a.employee_id)?.full_name || a.employee_name || 'Staff',
+      }))
+      .sort((a, b) => b.attendance_date.localeCompare(a.attendance_date));
+  }
+
+  async correctAttendanceRecord(
+    recordId: string,
+    data: {
+      check_in_time?: string;
+      check_out_time?: string;
+      status?: any;
+      total_minutes?: number;
+      notes?: string;
+    },
+    adminId: string,
+    reason: string
+  ): Promise<AttendanceRecord> {
+    if (!reason || !reason.trim()) {
+      throw new Error('Mandatory reason required for administrative attendance correction');
+    }
+
+    let record = this.attendanceRecords.find((a) => a.id === recordId);
+    if (!record && supabaseAdmin) {
+      try {
+        const { data: sbRec } = await supabaseAdmin
+          .from('attendance_records')
+          .select('*')
+          .eq('id', recordId)
+          .maybeSingle();
+        if (sbRec) record = sbRec;
+      } catch {
+        // Fallback
+      }
+    }
+
+    if (!record) {
+      throw new Error('Attendance record not found');
+    }
+
+    const admin = await this.getUserById(adminId);
+    const now = new Date().toISOString();
+    const oldValues = {
+      check_in_time: record.check_in_time,
+      check_out_time: record.check_out_time,
+      status: record.status,
+      total_minutes: record.total_minutes,
+      notes: record.notes,
+    };
+
+    if (data.check_in_time !== undefined) record.check_in_time = data.check_in_time;
+    if (data.check_out_time !== undefined) record.check_out_time = data.check_out_time;
+    if (data.status !== undefined) record.status = data.status;
+    if (data.notes !== undefined) record.notes = data.notes;
+
+    if (data.total_minutes !== undefined) {
+      record.total_minutes = data.total_minutes;
+    } else if (record.check_in_time && record.check_out_time) {
+      const diffMs = new Date(record.check_out_time).getTime() - new Date(record.check_in_time).getTime();
+      record.total_minutes = Math.max(0, Math.round(diffMs / 60000));
+    }
+
+    record.is_corrected = true;
+    record.correction_reason = reason.trim();
+    record.corrected_by = adminId;
+    record.corrected_by_name = admin?.full_name || 'Administrator';
+    record.corrected_at = now;
+    record.updated_at = now;
+
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin
+          .from('attendance_records')
+          .update({
+            check_in_time: record.check_in_time,
+            check_out_time: record.check_out_time,
+            status: record.status,
+            total_minutes: record.total_minutes,
+            notes: record.notes,
+            is_corrected: true,
+            correction_reason: record.correction_reason,
+            corrected_by: adminId,
+            corrected_at: now,
+            updated_at: now,
+          })
+          .eq('id', recordId);
+      } catch (err: any) {
+        console.warn('Supabase correctAttendanceRecord warning:', err.message);
+      }
+    }
+
+    await this.addAttendanceAuditLog({
+      attendance_id: record.id,
+      employee_id: record.employee_id,
+      performed_by: adminId,
+      action: 'ADMIN_CORRECTION',
+      old_values: oldValues,
+      new_values: {
+        check_in_time: record.check_in_time,
+        check_out_time: record.check_out_time,
+        status: record.status,
+        total_minutes: record.total_minutes,
+        notes: record.notes,
+        reason: record.correction_reason,
+      },
+      reason: record.correction_reason,
+    });
+
+    return record;
+  }
+
+  async addAttendanceAuditLog(params: {
+    attendance_id?: string | null;
+    employee_id: string;
+    performed_by: string;
+    action: string;
+    old_values?: Record<string, any>;
+    new_values?: Record<string, any>;
+    reason?: string | null;
+  }): Promise<AttendanceAuditLog> {
+    const emp = await this.getUserById(params.employee_id);
+    const actor = await this.getUserById(params.performed_by);
+    const log: AttendanceAuditLog = {
+      id: crypto.randomUUID(),
+      attendance_id: params.attendance_id || null,
+      employee_id: params.employee_id,
+      employee_name: emp?.full_name || 'Staff',
+      performed_by: params.performed_by,
+      performed_by_name: actor?.full_name || 'Staff',
+      action: params.action,
+      old_values: params.old_values || {},
+      new_values: params.new_values || {},
+      reason: params.reason || null,
+      created_at: new Date().toISOString(),
+    };
+
+    this.attendanceAuditLogs.unshift(log);
+
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin.from('attendance_audit_logs').insert({
+          id: log.id,
+          attendance_id: log.attendance_id,
+          employee_id: log.employee_id,
+          performed_by: log.performed_by,
+          action: log.action,
+          old_values: log.old_values,
+          new_values: log.new_values,
+          reason: log.reason,
+        });
+      } catch {
+        // Fallback
+      }
+    }
+
+    return log;
+  }
+
+  async getAttendanceAuditLogs(filters?: {
+    employee_id?: string;
+    action?: string;
+    limit?: number;
+  }): Promise<AttendanceAuditLog[]> {
+    if (supabaseAdmin) {
+      try {
+        let query = supabaseAdmin
+          .from('attendance_audit_logs')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (filters?.employee_id) query = query.eq('employee_id', filters.employee_id);
+        if (filters?.action) query = query.eq('action', filters.action);
+        query = query.limit(filters?.limit || 200);
+
+        const { data } = await query;
+        if (data) {
+          const userMap = new Map(this.users.map((u) => [u.id, u]));
+          return data.map((d: any) => ({
+            ...d,
+            employee_name: userMap.get(d.employee_id)?.full_name || 'Staff',
+            performed_by_name: userMap.get(d.performed_by)?.full_name || 'Staff',
+          }));
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    let result = [...this.attendanceAuditLogs];
+    if (filters?.employee_id) {
+      result = result.filter((l) => l.employee_id === filters.employee_id);
+    }
+    if (filters?.action) {
+      result = result.filter((l) => l.action === filters.action);
+    }
+    return result.slice(0, filters?.limit || 200);
+  }
+
+  // --- MONTHLY ATTENDANCE REPORT & SALARY COMPUTATION ---
+
+  async getMonthlyAttendanceReport(yearMonth: string): Promise<MonthlyAttendanceReport> {
+    const { daysInMonth, workingDays, startDate, endDate, dates } = getMonthDateRange(yearMonth);
+    const todayDate = getKolkataDateString();
+
+    // Sync records for the month if Supabase is connected
+    if (supabaseAdmin) {
+      try {
+        const { data: recs } = await supabaseAdmin
+          .from('attendance_records')
+          .select('*')
+          .gte('attendance_date', startDate)
+          .lte('attendance_date', endDate);
+
+        if (recs) {
+          const userMap = new Map(this.users.map((u) => [u.id, u]));
+          const devMap = new Map(this.devices.map((d) => [d.id, d]));
+          for (const r of recs) {
+            const idx = this.attendanceRecords.findIndex((a) => a.id === r.id);
+            const enriched = {
+              ...r,
+              employee_name: userMap.get(r.employee_id)?.full_name || 'Staff',
+              device_name: devMap.get(r.device_id)?.device_name || 'Office Laptop',
+            };
+            if (idx === -1) {
+              this.attendanceRecords.push(enriched);
+            } else {
+              this.attendanceRecords[idx] = enriched;
+            }
+          }
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    // Active staff members eligible for salary processing (employees & managers)
+    const allUsers = await this.getAllUsers();
+    const employees = allUsers.filter(
+      (u) => !u.is_deleted && (u.role === 'employee' || u.role === 'manager')
+    );
+
+    // Calculate working days elapsed in the month up to today
+    const workingDaysElapsed = dates.filter(
+      (d) => !d.isSunday && (d.date <= todayDate || endDate < todayDate)
+    ).length;
+
+    const summaries: MonthlyEmployeeSummary[] = employees.map((emp) => {
+      const records = this.attendanceRecords.filter(
+        (a) => a.employee_id === emp.id && a.attendance_date >= startDate && a.attendance_date <= endDate
+      );
+
+      const fullDays = records.filter(
+        (r) => (r.status === 'present' || !r.status) && Boolean(r.check_in_time)
+      ).length;
+      const halfDays = records.filter((r) => r.status === 'half_day').length;
+      const approvedLeaves = records.filter((r) => r.status === 'leave').length;
+      const presentDays = fullDays + halfDays;
+      const payableDays = fullDays + halfDays * 0.5 + approvedLeaves;
+      const totalWorkingMinutes = records.reduce((sum, r) => sum + (r.total_minutes || 0), 0);
+
+      // Missing checkout: checked in, no checkout, and date is in past
+      const missingCheckouts = records.filter(
+        (r) => Boolean(r.check_in_time) && !r.check_out_time && r.attendance_date < todayDate
+      ).length;
+
+      // Absent days: working days elapsed minus present days minus leaves
+      const absentDays = Math.max(0, workingDaysElapsed - presentDays - approvedLeaves);
+
+      const attendancePercentage =
+        workingDaysElapsed > 0
+          ? Math.min(100, Math.round((payableDays / workingDaysElapsed) * 100))
+          : 0;
+
+      const avgMinutes = presentDays > 0 ? Math.round(totalWorkingMinutes / presentDays) : 0;
+
+      return {
+        employee_id: emp.id,
+        employee_name: emp.full_name,
+        email: emp.email,
+        total_calendar_days: daysInMonth,
+        working_days: workingDays,
+        present_days: presentDays,
+        half_days: halfDays,
+        payable_days: payableDays,
+        absent_days: absentDays,
+        approved_leaves: approvedLeaves,
+        total_working_minutes: totalWorkingMinutes,
+        total_working_hours: formatMinutesToHours(totalWorkingMinutes),
+        avg_working_hours: formatMinutesToHours(avgMinutes),
+        missing_checkouts: missingCheckouts,
+        attendance_percentage: attendancePercentage,
+      };
+    });
+
+    return {
+      month: yearMonth,
+      total_calendar_days: daysInMonth,
+      working_days: workingDays,
+      total_employees: employees.length,
+      summaries: summaries.sort((a, b) => a.employee_name.localeCompare(b.employee_name)),
+      generated_at: new Date().toISOString(),
+    };
+  }
+
 }
 
 export const dbStore = new DatabaseStore();
