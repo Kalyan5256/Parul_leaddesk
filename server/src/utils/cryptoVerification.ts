@@ -29,10 +29,14 @@ export const verifyDeviceSignature = async (
   signatureBase64: string
 ): Promise<boolean> => {
   try {
-    const jwk =
+    const rawJwk =
       typeof publicKeyJwkJson === 'string'
         ? JSON.parse(publicKeyJwkJson)
         : publicKeyJwkJson;
+
+    // Sanitize key_ops so keys registered previously with empty or missing 'verify' key_ops import cleanly
+    const jwk = { ...rawJwk };
+    delete jwk.key_ops;
 
     const publicKey = await subtle.importKey(
       'jwk',

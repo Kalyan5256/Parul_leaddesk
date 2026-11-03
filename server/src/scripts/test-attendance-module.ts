@@ -103,6 +103,11 @@ async function runTests() {
   const isSigValid = await verifyDeviceSignature(jwkStr, message, signatureBase64);
   assert(isSigValid === true, 'Valid device signature verified successfully');
 
+  // Test JWK with empty key_ops (legacy/browser generated)
+  const legacyJwk = { ...jwk, key_ops: [] };
+  const isLegacyJwkValid = await verifyDeviceSignature(JSON.stringify(legacyJwk), message, signatureBase64);
+  assert(isLegacyJwkValid === true, 'Legacy JWK with empty key_ops sanitized and verified');
+
   // Test corrupted / tampered signature
   const isCorruptedValid = await verifyDeviceSignature(jwkStr, message, 'dGFtcGVyZWQtc2lnbmF0dXJl');
   assert(isCorruptedValid === false, 'Tampered signature rejected');

@@ -137,7 +137,7 @@ export class DeviceAuthManager {
         namedCurve: 'P-256',
       },
       false, // non-extractable private key
-      ['sign']
+      ['sign', 'verify']
     );
 
     // Export public key as JWK to send to server
