@@ -24,12 +24,16 @@ export const computeKeyFingerprint = (keyData: string): string => {
  * @param signatureBase64 Base64-encoded signature from client
  */
 export const verifyDeviceSignature = async (
-  publicKeyJwkJson: string,
+  publicKeyJwkJson: string | object,
   message: string,
   signatureBase64: string
 ): Promise<boolean> => {
   try {
-    const jwk = JSON.parse(publicKeyJwkJson);
+    const jwk =
+      typeof publicKeyJwkJson === 'string'
+        ? JSON.parse(publicKeyJwkJson)
+        : publicKeyJwkJson;
+
     const publicKey = await subtle.importKey(
       'jwk',
       jwk,
@@ -54,9 +58,16 @@ export const verifyDeviceSignature = async (
       messageBuffer
     );
 
+    if (!isValid) {
+      console.warn('verifyDeviceSignature: Signature did not match expected payload', {
+        messageLength: message.length,
+        sigLength: signatureBuffer.length,
+      });
+    }
+
     return isValid;
   } catch (error) {
-    console.error('Cryptographic signature verification failed:', error);
+    console.error('Cryptographic signature verification failed with error:', error);
     return false;
   }
 };

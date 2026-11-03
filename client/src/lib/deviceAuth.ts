@@ -216,8 +216,7 @@ export class DeviceAuthManager {
    */
   static async performCheckIn(
     employeeId: string,
-    notes?: string,
-    status: 'present' | 'half_day' = 'present'
+    notes?: string
   ): Promise<ApiResponse<any>> {
     if (isMobileBrowser()) {
       throw new Error('Attendance check-in is prohibited on mobile devices.');
@@ -246,7 +245,6 @@ export class DeviceAuthManager {
       nonce: challengeRes.nonce,
       signature,
       notes,
-      status,
     });
 
     return checkInRes;
@@ -257,8 +255,7 @@ export class DeviceAuthManager {
    */
   static async performCheckOut(
     employeeId: string,
-    notes?: string,
-    status?: 'present' | 'half_day'
+    notes?: string
   ): Promise<ApiResponse<any>> {
     if (isMobileBrowser()) {
       throw new Error('Attendance check-out is prohibited on mobile devices.');
@@ -287,7 +284,6 @@ export class DeviceAuthManager {
       nonce: challengeRes.nonce,
       signature,
       notes,
-      status,
     });
 
     return checkOutRes;

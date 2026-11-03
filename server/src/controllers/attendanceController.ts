@@ -130,7 +130,7 @@ export const checkIn = async (req: AuthenticatedRequest, res: Response): Promise
     );
 
     if (!isChallengeValid) {
-      res.status(401).json({
+      res.status(400).json({
         success: false,
         message: 'Challenge nonce is invalid, expired, or previously consumed',
         code: 'CHALLENGE_INVALID',
@@ -147,7 +147,7 @@ export const checkIn = async (req: AuthenticatedRequest, res: Response): Promise
     );
 
     if (!isSignatureValid) {
-      res.status(401).json({
+      res.status(400).json({
         success: false,
         message: 'Cryptographic signature verification failed: private key proof mismatch',
         code: 'DEVICE_SIGNATURE_MISMATCH',
@@ -226,7 +226,7 @@ export const checkOut = async (req: AuthenticatedRequest, res: Response): Promis
     );
 
     if (!isChallengeValid) {
-      res.status(401).json({
+      res.status(400).json({
         success: false,
         message: 'Challenge nonce is invalid, expired, or previously consumed',
         code: 'CHALLENGE_INVALID',
@@ -243,7 +243,7 @@ export const checkOut = async (req: AuthenticatedRequest, res: Response): Promis
     );
 
     if (!isSignatureValid) {
-      res.status(401).json({
+      res.status(400).json({
         success: false,
         message: 'Cryptographic signature verification failed: private key proof mismatch',
         code: 'DEVICE_SIGNATURE_MISMATCH',

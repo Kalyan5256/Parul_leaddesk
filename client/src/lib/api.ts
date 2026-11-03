@@ -53,8 +53,18 @@ class ApiService {
       const json = await response.json();
 
       if (!response.ok) {
-        if (response.status === 401 && !url.includes('/auth/login')) {
-          // Token expired or invalid
+        // Only force logout for true authentication session expiration, NEVER for operational/attendance failures
+        const isAuthTokenFailure =
+          response.status === 401 &&
+          !url.includes('/auth/login') &&
+          !url.includes('/attendance') &&
+          (json?.code === 'AUTH_TOKEN_MISSING' ||
+            json?.code === 'AUTH_TOKEN_INVALID' ||
+            json?.code === 'USER_NOT_FOUND' ||
+            json?.message?.toLowerCase().includes('token expired') ||
+            json?.message?.toLowerCase().includes('authentication token'));
+
+        if (isAuthTokenFailure) {
           localStorage.removeItem('parul_auth_token');
           localStorage.removeItem('parul_user');
           if (window.location.pathname !== '/login') {

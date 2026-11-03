@@ -2025,6 +2025,8 @@ class DatabaseStore {
     const deviceId = crypto.randomUUID();
     const now = new Date().toISOString();
     const fingerprint = computeKeyFingerprint(params.public_key);
+    const isManagerOrAdmin = employee.role === 'admin' || employee.role === 'manager';
+    const initialStatus: DeviceStatus = isManagerOrAdmin ? 'approved' : 'pending';
 
     const device: EmployeeDevice = {
       id: deviceId,
@@ -2034,10 +2036,11 @@ class DatabaseStore {
       device_fingerprint: fingerprint,
       public_key: params.public_key,
       key_algorithm: params.key_algorithm || 'ECDSA-P256',
-      status: 'pending', // Requires explicit Administrator approval
+      status: initialStatus,
       registered_at: now,
-      approved_at: null,
-      approved_by: null,
+      approved_at: isManagerOrAdmin ? now : null,
+      approved_by: isManagerOrAdmin ? params.employee_id : null,
+      approved_by_name: isManagerOrAdmin ? employee.full_name : null,
       revoked_at: null,
       revoked_by: null,
       revocation_reason: null,
@@ -2423,6 +2426,10 @@ class DatabaseStore {
     record.total_minutes = totalMinutes;
     if (status) {
       record.status = status;
+    } else {
+      // Automatically determine half day vs full day based on duration:
+      // Less than 5 hours (300 minutes) = half_day; 5 hours or more = present (full day)
+      record.status = totalMinutes < 300 ? 'half_day' : 'present';
     }
     record.updated_at = now;
     if (notes) {

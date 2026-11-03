@@ -29,7 +29,6 @@ export const TodayAttendanceCard: React.FC<TodayAttendanceCardProps> = ({
   onOpenRegisterModal,
 }) => {
   const [notes, setNotes] = useState<string>('');
-  const [shiftStatus, setShiftStatus] = useState<'present' | 'half_day'>('present');
   const [isOperating, setIsOperating] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -39,15 +38,6 @@ export const TodayAttendanceCard: React.FC<TodayAttendanceCardProps> = ({
   const isCheckedIn = Boolean(todayRecord?.check_in_time);
   const isCheckedOut = Boolean(todayRecord?.check_out_time);
   const isDeviceApproved = device?.status === 'approved';
-
-  // Synchronize initial shift status from existing record if present
-  useEffect(() => {
-    if (todayRecord?.status === 'half_day') {
-      setShiftStatus('half_day');
-    } else if (todayRecord?.status === 'present') {
-      setShiftStatus('present');
-    }
-  }, [todayRecord]);
 
   // Live timer for elapsed duration while checked in
   useEffect(() => {
@@ -85,8 +75,13 @@ export const TodayAttendanceCard: React.FC<TodayAttendanceCardProps> = ({
   };
 
   const handleCheckIn = async () => {
+    if (!device) {
+      onOpenRegisterModal();
+      return;
+    }
+
     if (!isDeviceApproved) {
-      setErrorMsg('Attendance check-in requires an approved office laptop.');
+      setErrorMsg('This office laptop is awaiting Administrator approval.');
       return;
     }
 
@@ -95,13 +90,9 @@ export const TodayAttendanceCard: React.FC<TodayAttendanceCardProps> = ({
     setSuccessMsg(null);
 
     try {
-      const res = await DeviceAuthManager.performCheckIn(employeeId, notes, shiftStatus);
+      const res = await DeviceAuthManager.performCheckIn(employeeId, notes);
       if (res.success) {
-        setSuccessMsg(
-          shiftStatus === 'half_day'
-            ? 'Half-day check-in logged successfully!'
-            : 'Check-in logged successfully!'
-        );
+        setSuccessMsg('Check-in recorded successfully!');
         setNotes('');
         onRefresh();
       } else {
@@ -126,13 +117,9 @@ export const TodayAttendanceCard: React.FC<TodayAttendanceCardProps> = ({
     setSuccessMsg(null);
 
     try {
-      const res = await DeviceAuthManager.performCheckOut(employeeId, notes, shiftStatus);
+      const res = await DeviceAuthManager.performCheckOut(employeeId, notes);
       if (res.success) {
-        setSuccessMsg(
-          shiftStatus === 'half_day'
-            ? 'Half-day check-out logged successfully. Have a good rest of your day!'
-            : 'Check-out logged successfully. Have a great evening!'
-        );
+        setSuccessMsg('Check-out recorded successfully! Shift completed for today.');
         setNotes('');
         onRefresh();
       } else {
@@ -214,10 +201,12 @@ export const TodayAttendanceCard: React.FC<TodayAttendanceCardProps> = ({
                 </div>
                 <div>
                   <div className="text-base font-bold text-white">
-                    {todayRecord?.status === 'half_day' ? 'Half Day' : 'Completed'}
+                    {todayRecord?.status === 'half_day' ? 'Half Day Completed' : 'Full Day Completed'}
                   </div>
                   <div className="text-xs text-emerald-400">
-                    {todayRecord?.status === 'half_day' ? 'Half day finalized' : 'Full day finalized'}
+                    {todayRecord?.status === 'half_day'
+                      ? 'Automatically counted (< 5 hrs)'
+                      : 'Automatically counted (≥ 5 hrs)'}
                   </div>
                 </div>
               </>
@@ -227,12 +216,8 @@ export const TodayAttendanceCard: React.FC<TodayAttendanceCardProps> = ({
                   <Clock className="w-6 h-6" />
                 </div>
                 <div>
-                  <div className="text-base font-bold text-white">
-                    {todayRecord?.status === 'half_day' ? 'Half Day Active' : 'Checked In'}
-                  </div>
-                  <div className="text-xs text-blue-400">
-                    {todayRecord?.status === 'half_day' ? '0.5 day shift' : 'Full day shift'}
-                  </div>
+                  <div className="text-base font-bold text-white">Checked In</div>
+                  <div className="text-xs text-blue-400">Shift active (Tracking IST)</div>
                 </div>
               </>
             ) : (
@@ -242,7 +227,7 @@ export const TodayAttendanceCard: React.FC<TodayAttendanceCardProps> = ({
                 </div>
                 <div>
                   <div className="text-base font-bold text-white">Not Checked In</div>
-                  <div className="text-xs text-slate-400">Pending arrival</div>
+                  <div className="text-xs text-slate-400">Awaiting shift start</div>
                 </div>
               </>
             )}
@@ -299,49 +284,6 @@ export const TodayAttendanceCard: React.FC<TodayAttendanceCardProps> = ({
         </div>
       </div>
 
-      {/* Shift Type Selector (Full Day vs Half Day) */}
-      {!isCheckedOut && (
-        <div className="mb-6 p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div className="text-xs font-bold text-white flex items-center gap-1.5">
-              <span>Shift Mode:</span>
-              <span className={shiftStatus === 'half_day' ? 'text-amber-400' : 'text-emerald-400'}>
-                {shiftStatus === 'half_day' ? 'Half Day (0.5 Payable Day)' : 'Full Day (1.0 Payable Day)'}
-              </span>
-            </div>
-            <div className="text-[11px] text-slate-400 mt-0.5">
-              Select your schedule mode for today's attendance calculation
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={isOperating || !isDeviceApproved}
-              onClick={() => setShiftStatus('present')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
-                shiftStatus === 'present'
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/10'
-                  : 'bg-black/30 text-slate-400 border-white/10 hover:text-white'
-              }`}
-            >
-              Full Day (1.0)
-            </button>
-            <button
-              type="button"
-              disabled={isOperating || !isDeviceApproved}
-              onClick={() => setShiftStatus('half_day')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
-                shiftStatus === 'half_day'
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-500/10'
-                  : 'bg-black/30 text-slate-400 border-white/10 hover:text-white'
-              }`}
-            >
-              Half Day (0.5)
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Notes Input Field */}
       {!isCheckedOut && (
         <div className="mb-6">
@@ -353,25 +295,31 @@ export const TodayAttendanceCard: React.FC<TodayAttendanceCardProps> = ({
             type="text"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="e.g. Completed 45 student counseling calls, scheduled 8 follow-ups"
-            disabled={isOperating || !isDeviceApproved}
+            placeholder="e.g. Completed student counseling calls, scheduled follow-ups"
+            disabled={isOperating || (Boolean(device) && !isDeviceApproved)}
             className="w-full px-4 py-2.5 rounded-xl bg-black/40 border border-white/15 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-pu-gold transition-colors disabled:opacity-50"
           />
         </div>
       )}
 
-      {/* Operational Buttons */}
+      {/* Single Dynamic Attendance Action Button */}
+      {/* Before check-in: 'Record Check In' -> After check-in: turns into 'Record Check Out' */}
       <div className="flex flex-col sm:flex-row items-center gap-4">
         {!isCheckedIn && (
           <button
-            onClick={handleCheckIn}
-            disabled={isOperating || !isDeviceApproved}
+            onClick={!device ? onOpenRegisterModal : handleCheckIn}
+            disabled={isOperating || (Boolean(device) && !isDeviceApproved)}
             className="w-full sm:flex-1 py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-extrabold text-sm uppercase tracking-wider shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-3 disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.01] active:scale-[0.99]"
           >
             {isOperating ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
                 <span>Verifying Cryptographic Credentials...</span>
+              </>
+            ) : !device ? (
+              <>
+                <Laptop className="w-5 h-5" />
+                <span>Register Office Laptop & Check In</span>
               </>
             ) : (
               <>
@@ -403,9 +351,11 @@ export const TodayAttendanceCard: React.FC<TodayAttendanceCardProps> = ({
         )}
 
         {isCheckedOut && (
-          <div className="w-full py-3.5 px-6 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold text-center flex items-center justify-center gap-2">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>Today's attendance is fully finalized. Next check-in opens tomorrow.</span>
+          <div className="w-full py-4 px-6 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-bold text-center flex items-center justify-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            <span>
+              Today's shift finalized ({Math.floor(elapsedSeconds / 3600)}h {Math.floor((elapsedSeconds % 3600) / 60)}m - {todayRecord?.status === 'half_day' ? 'Half Day' : 'Full Day'}). Next check-in opens tomorrow.
+            </span>
           </div>
         )}
       </div>
